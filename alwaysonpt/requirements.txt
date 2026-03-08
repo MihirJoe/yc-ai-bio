@@ -1,0 +1,11 @@
+anthropic
+numpy
+scipy
+pandas
+PyWavelets
+matplotlib
+scikit-learn
+wfdb
+fastapi
+uvicorn[standard]
+websockets

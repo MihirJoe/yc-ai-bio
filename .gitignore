@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment
+.env
+
+# macOS
+.DS_Store
+
+# Data (large files)
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# Matplotlib cache
+.mplcache/
+
+# Eval outputs
+alwaysonpt/output/
+
+# PDFs
+*.pdf
+
+somaAgent/
