@@ -1,0 +1,3 @@
+[submodule "EMG-Gesture-Recognition-System"]
+	path = EMG-Gesture-Recognition-System
+	url = https://github.com/SilvaUnCompte/EMG-Gesture-Recognition-System

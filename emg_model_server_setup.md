@@ -1,26 +1,30 @@
-# EMG Model Server integration
+# EMG Model Server Integration
 
-The `alwaysonpt.emg_model_bridge` module provides access to EMG expert models (fatigue, effort, pose, intent).
+All EMG expert code is **bundled in this repo**. Clone, run setup, and use.
 
-## Setup
+## Quick Setup
 
-1. **Install emg-model-server** (from sibling repo or clone):
+```bash
+# Clone (includes gesture model via submodule)
+git clone --recursive https://github.com/MihirJoe/yc-ai-bio.git
+cd yc-ai-bio
 
-   ```bash
-   # Option A: Local path (sibling project)
-   pip install -e /path/to/emg-model-server
+# Install and init submodules
+./scripts/setup.sh
 
-   # Option B: Git submodule
-   git submodule add <emg-model-server-repo-url> emg-model-server
-   pip install -e ./emg-model-server
-   ```
+# Optional: enable gesture (intent) model
+export EMG_GESTURE_MODEL_DIR="$PWD/EMG-Gesture-Recognition-System/models-example/gesture_cls/1.0.0_20250821T094534Z"
+```
 
-2. **Environment variables** (for pose + intent):
+## What's Included
 
-   ```bash
-   export EMG2POSE_PROJECT_ROOT=/path/to/emg2pose/project
-   export EMG_GESTURE_MODEL_DIR=/path/to/EMG-Gesture-Recognition-System/models-example/gesture_cls/...
-   ```
+| Component | In Repo | Works OOTB |
+|-----------|---------|------------|
+| **emg_model_server** | Yes (vendored) | Yes |
+| **Fatigue adapter** | Yes | Yes (feature-based) |
+| **Effort adapter** | Yes | Yes (feature-based) |
+| **Gesture model** (intent) | Yes (submodule) | Yes after `EMG_GESTURE_MODEL_DIR` |
+| **emg2pose** (pose) | No | Optional, manual setup |
 
 ## Usage
 
@@ -36,12 +40,22 @@ from alwaysonpt.emg_model_bridge import (
 
 emg_input = load_emg_input(data=emg_array, sample_rate=1000)
 
-# Individual adapters
-fatigue_out = get_fatigue(emg_input)   # {"adapter": "fatigue", "fatigue_score": 0.63, ...}
-effort_out = get_effort(emg_input)     # {"adapter": "effort", "effort_score": 0.17, ...}
-pose_out = get_pose(emg_input)         # {"adapter": "pose", "pose_features": [...]}  # 16-ch
-intent_out = get_intent(emg_input)     # {"adapter": "intent", "intent_labels": [...]} # 8+ ch
+# Always work (no model files)
+fatigue_out = get_fatigue(emg_input)
+effort_out = get_effort(emg_input)
 
-# Or run all at once
-all_out = get_all(emg_input)
+# Work if EMG_GESTURE_MODEL_DIR set
+intent_out = get_intent(emg_input)
+
+# Optional: emg2pose (16-ch, 2000 Hz, checkpoint required)
+pose_out = get_pose(emg_input)  # status=unavailable without emg2pose
 ```
+
+## Optional: Pose (emg2pose)
+
+Pose estimation requires Meta's emg2pose package and checkpoint:
+
+1. Clone emg2pose: `git clone https://github.com/facebookresearch/emg2pose`
+2. `pip install -e ./emg2pose`
+3. Download checkpoint to `~/emg2pose_model_checkpoints/tracking_vemg2pose.ckpt` (see emg2pose README)
+4. `export EMG2POSE_PROJECT_ROOT=/path/to/emg2pose`

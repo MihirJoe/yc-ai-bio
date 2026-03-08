@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yc-ai-bio"
+version = "0.1.0"
+description = "Agentic framework for biosignal analysis"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic",
+    "numpy",
+    "scipy",
+    "pandas",
+    "joblib>=1.2.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "PyWavelets",
+    "matplotlib",
+    "scikit-learn",
+    "wfdb",
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+]
+
+[tool.setuptools.packages.find]
+include = ["alwaysonpt*", "emg_model_server*"]
