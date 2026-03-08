@@ -1,5 +1,7 @@
 anthropic
 numpy
+# EMG model server (install from path: pip install -e /path/to/emg-model-server)
+# Or add as git submodule and: pip install -e ./emg-model-server
 scipy
 pandas
 PyWavelets
