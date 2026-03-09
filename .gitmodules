@@ -1,3 +1,6 @@
 [submodule "EMG-Gesture-Recognition-System"]
 	path = EMG-Gesture-Recognition-System
 	url = https://github.com/SilvaUnCompte/EMG-Gesture-Recognition-System
+[submodule "emg2pose"]
+	path = emg2pose
+	url = https://github.com/facebookresearch/emg2pose

@@ -14,6 +14,9 @@ venv/
 # Data (large files)
 data/
 
+# Downloaded model checkpoints (run scripts/download_models.sh)
+models/
+
 # IDE
 .vscode/
 .idea/

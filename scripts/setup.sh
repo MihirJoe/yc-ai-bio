@@ -12,20 +12,18 @@ git submodule update --init --recursive
 echo "=== Installing Python package (editable) ==="
 pip install -e .
 
-GESTURE_MODEL_DIR="$REPO_ROOT/EMG-Gesture-Recognition-System/models-example/gesture_cls/1.0.0_20250821T094534Z"
-if [ -d "$GESTURE_MODEL_DIR" ] && [ -f "$GESTURE_MODEL_DIR/pipeline.joblib" ]; then
-  echo ""
-  echo "=== Gesture model ready ==="
-  echo "Set in your environment or .env:"
-  echo "  export EMG_GESTURE_MODEL_DIR=$GESTURE_MODEL_DIR"
+echo "=== Downloading model checkpoints (emg2pose) ==="
+if ./scripts/download_models.sh 2>/dev/null; then
+  echo "emg2pose checkpoints ready"
 else
-  echo ""
-  echo "WARNING: Gesture model not found at $GESTURE_MODEL_DIR"
-  echo "Run: git submodule update --init EMG-Gesture-Recognition-System"
+  echo "Skipped or failed: emg2pose checkpoints (optional for pose)"
 fi
 
 echo ""
 echo "=== Setup complete ==="
-echo "Fatigue & effort: work immediately (no model files)"
-echo "Intent (gesture): set EMG_GESTURE_MODEL_DIR as above"
-echo "Pose (emg2pose): optional, see emg_model_server_setup.md"
+echo "Fatigue & effort: work immediately"
+echo "Intent (gesture): auto-detected from submodule EMG-Gesture-Recognition-System"
+echo "Pose (emg2pose): checkpoints downloaded; requires emg2pose env for inference"
+echo "  See emg_model_server_setup.md for pose setup"
+echo ""
+echo "Verify: python scripts/verify_models.py"

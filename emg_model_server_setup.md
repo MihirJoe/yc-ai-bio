@@ -1,20 +1,22 @@
 # EMG Model Server Integration
 
-All EMG expert code is **bundled in this repo**. Clone, run setup, and use.
+All EMG expert code and models are **bundled in this repo**. Clone, run setup, and use.
 
 ## Quick Setup
 
 ```bash
-# Clone (includes gesture model via submodule)
+# Clone with submodules (gesture model + emg2pose code)
 git clone --recursive https://github.com/MihirJoe/yc-ai-bio.git
 cd yc-ai-bio
 
-# Install and init submodules
+# Install deps, init submodules, download checkpoints
 ./scripts/setup.sh
 
-# Optional: enable gesture (intent) model
-export EMG_GESTURE_MODEL_DIR="$PWD/EMG-Gesture-Recognition-System/models-example/gesture_cls/1.0.0_20250821T094534Z"
+# Verify
+python scripts/verify_models.py
 ```
+
+No manual env vars needed for fatigue, effort, or gesture — paths are auto-detected.
 
 ## What's Included
 
@@ -23,8 +25,8 @@ export EMG_GESTURE_MODEL_DIR="$PWD/EMG-Gesture-Recognition-System/models-example
 | **emg_model_server** | Yes (vendored) | Yes |
 | **Fatigue adapter** | Yes | Yes (feature-based) |
 | **Effort adapter** | Yes | Yes (feature-based) |
-| **Gesture model** (intent) | Yes (submodule) | Yes after `EMG_GESTURE_MODEL_DIR` |
-| **emg2pose** (pose) | No | Optional, manual setup |
+| **Gesture model** (intent) | Yes (submodule) | Yes (auto-detected) |
+| **emg2pose** (pose) | Yes (submodule) | Needs emg2pose env + checkpoints |
 
 ## Usage
 
@@ -44,18 +46,21 @@ emg_input = load_emg_input(data=emg_array, sample_rate=1000)
 fatigue_out = get_fatigue(emg_input)
 effort_out = get_effort(emg_input)
 
-# Work if EMG_GESTURE_MODEL_DIR set
+# Works when submodule + pipeline.joblib present
 intent_out = get_intent(emg_input)
 
-# Optional: emg2pose (16-ch, 2000 Hz, checkpoint required)
-pose_out = get_pose(emg_input)  # status=unavailable without emg2pose
+# Needs emg2pose env + checkpoint
+pose_out = get_pose(emg_input)  # status=unavailable until pose setup
 ```
 
-## Optional: Pose (emg2pose)
+## Pose (emg2pose) Setup
 
-Pose estimation requires Meta's emg2pose package and checkpoint:
+Pose estimation requires emg2pose's conda environment and the checkpoint (downloaded by setup.sh):
 
-1. Clone emg2pose: `git clone https://github.com/facebookresearch/emg2pose`
-2. `pip install -e ./emg2pose`
-3. Download checkpoint to `~/emg2pose_model_checkpoints/tracking_vemg2pose.ckpt` (see emg2pose README)
-4. `export EMG2POSE_PROJECT_ROOT=/path/to/emg2pose`
+1. `conda env create -f emg2pose/environment.yml`
+2. `conda activate emg2pose`
+3. `pip install -e ./emg2pose`
+4. `pip install -e ./emg2pose/emg2pose/UmeTrack`
+5. Checkpoint is at `models/emg2pose_model_checkpoints/tracking_vemg2pose.ckpt` (after `./scripts/download_models.sh`)
+
+Paths are auto-detected when running from this repo; no env vars needed if structure is unchanged.
