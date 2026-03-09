@@ -785,6 +785,7 @@ function switchSource(sourceId) {
   document.getElementById('src-multichannel').classList.toggle('hidden', sourceId !== 'multichannel');
 
   hide('result-card');
+  hide('adapterPlotsSection');
   resetTrace();
 }
 
@@ -820,7 +821,7 @@ async function startSession() {
   const btn = document.getElementById('loadBtn');
   btn.disabled = true; btn.textContent = 'Loading…';
 
-  hide('result-card'); hide('analyze-section');
+  hide('result-card'); hide('adapterPlotsSection'); hide('analyze-section');
   hide('segBar'); hide('segLegend'); hide('wfMetaWrap');
   resetTrace();
   setTopbar('idle', `S${sid} · ${exercise}`);
@@ -976,7 +977,7 @@ async function loadLiveRecording() {
   if (!sel.value) return;
   const btn = document.getElementById('liveLoadBtn');
   btn.disabled = true; btn.textContent = 'Loading…';
-  hide('result-card'); resetTrace();
+  hide('result-card'); hide('adapterPlotsSection'); resetTrace();
 
   try {
     const recId = sel.value;
@@ -1029,7 +1030,7 @@ async function loadMultiRecording() {
   if (!sel.value) return;
   const btn = document.getElementById('multiLoadBtn');
   btn.disabled = true; btn.textContent = 'Loading…';
-  hide('result-card'); resetTrace();
+  hide('result-card'); hide('adapterPlotsSection'); resetTrace();
 
   try {
     const res = await fetch(`${API}/api/multichannel/load/${sel.value}`);
