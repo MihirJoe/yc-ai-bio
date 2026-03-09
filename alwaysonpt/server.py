@@ -776,7 +776,7 @@ async def analyze_live_gait(req: LiveGaitRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-def _resolve_live_path(recording_id: str) -> Path | None:
+def _resolve_live_path(recording_id: str) -> Optional[Path]:
     """Find a live recording JSON file by its ID."""
     filepath = LIVE_DIR / f"{recording_id}.json"
     if filepath.exists():

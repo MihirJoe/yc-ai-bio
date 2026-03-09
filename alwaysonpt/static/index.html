@@ -446,6 +446,16 @@
     background: var(--accent); vertical-align: text-bottom;
     animation: blink 0.8s ease infinite;
   }
+
+  .metric-item.reveal {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+  }
+  .metric-item.reveal.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 </style>
 </head>
 <body>
@@ -977,7 +987,10 @@ async function loadLiveRecording() {
   if (!sel.value) return;
   const btn = document.getElementById('liveLoadBtn');
   btn.disabled = true; btn.textContent = 'Loading…';
-  hide('result-card'); hide('adapterPlotsSection'); resetTrace();
+  hide('result-card'); hide('adapterPlotsSection'); hide('gait-metrics-card'); hide('gait-plot-section');
+  document.getElementById('metricsGrid').innerHTML = '';
+  document.getElementById('liveStatusText').textContent = '';
+  resetTrace();
 
   try {
     const recId = sel.value;
@@ -1190,13 +1203,23 @@ async function runStaticGaitAnalysis(emg, fs, recordId, container, spinner, stat
       try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
 
       if (parsed.event === 'metrics') {
-        status.textContent = 'Metrics computed. AI analyzing...';
-        renderGaitMetrics(parsed.result, 'staticMetricsGrid');
+        status.textContent = 'Computing metrics…';
+        renderGaitMetrics(parsed.result, 'staticMetricsGrid', true);
         show('static-gait-metrics-card');
 
+        const totalMetrics = document.getElementById('staticMetricsGrid').querySelectorAll('.metric-item').length;
+        const plotDelay = 300 + totalMetrics * 250 + 400;
+
         if (parsed.plot_url) {
-          document.getElementById('static-gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
-          show('static-gait-plot-section');
+          setTimeout(() => {
+            document.getElementById('static-gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
+            show('static-gait-plot-section');
+            status.textContent = 'Metrics computed. AI analyzing…';
+          }, plotDelay);
+        } else {
+          setTimeout(() => {
+            status.textContent = 'Metrics computed. AI analyzing…';
+          }, plotDelay);
         }
 
         container.innerHTML = '';
@@ -1277,13 +1300,23 @@ async function runLiveAnalysis() {
         try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
 
         if (parsed.event === 'metrics') {
-          status.textContent = 'Metrics computed. AI analyzing...';
-          renderGaitMetrics(parsed.result);
+          status.textContent = 'Computing metrics…';
+          renderGaitMetrics(parsed.result, 'metricsGrid', true);
           show('gait-metrics-card');
 
+          const totalMetrics = document.getElementById('metricsGrid').querySelectorAll('.metric-item').length;
+          const plotDelay = 300 + totalMetrics * 250 + 400;
+
           if (parsed.plot_url) {
-            document.getElementById('gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
-            show('gait-plot-section');
+            setTimeout(() => {
+              document.getElementById('gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
+              show('gait-plot-section');
+              status.textContent = 'Metrics computed. AI analyzing…';
+            }, plotDelay);
+          } else {
+            setTimeout(() => {
+              status.textContent = 'Metrics computed. AI analyzing…';
+            }, plotDelay);
           }
 
           container.innerHTML = '';
@@ -1668,7 +1701,7 @@ function showResult(data, groundTruth) {
 // GAIT METRICS + MARKDOWN RENDERING (live tab)
 // =============================================================================
 
-function renderGaitMetrics(result, gridId) {
+function renderGaitMetrics(result, gridId, animate) {
   const ma = result.muscle_activation;
   if (!ma || ma.error) return;
 
@@ -1685,54 +1718,63 @@ function renderGaitMetrics(result, gridId) {
 
   function cvClass(val, thresh) { return val > thresh ? 'warn' : 'good'; }
 
+  const revealCls = animate ? 'reveal' : '';
+
   const grid = document.getElementById(gridId || 'metricsGrid');
   grid.innerHTML = `
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Bursts Detected</div>
       <div class="metric-value">${cd.burst_count || 0}</div>
       <div class="metric-sub">Active ${(cd.active_time_pct || 0).toFixed(0)}% of time</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Cadence</div>
       <div class="metric-value">${(sa.cadence_strides_per_min || 0).toFixed(1)}</div>
       <div class="metric-sub">strides/min</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Stride CV</div>
       <div class="metric-value ${cvClass(strideCv, 20)}">${strideCv.toFixed(1)}%</div>
       <div class="metric-sub">${strideCv > 20 ? 'Variable timing' : 'Consistent timing'}</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Peak Amplitude CV</div>
       <div class="metric-value ${cvClass(peakCv, 15)}">${peakCv.toFixed(1)}%</div>
       <div class="metric-sub">${peakCv > 15 ? 'Inconsistent force' : 'Consistent force'}</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Duration CV</div>
       <div class="metric-value ${cvClass(durCv, 15)}">${durCv.toFixed(1)}%</div>
       <div class="metric-sub">${durCv > 15 ? 'Variable recruitment' : 'Uniform recruitment'}</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Work-Rest Ratio</div>
       <div class="metric-value">${(wr.work_rest_ratio || 0).toFixed(2)}</div>
       <div class="metric-sub">${(wr.active_time_s || 0).toFixed(1)}s active / ${(wr.rest_time_s || 0).toFixed(1)}s rest</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Mean Activation</div>
       <div class="metric-value">${(al.mean || 0).toFixed(1)}</div>
       <div class="metric-sub">peak: ${(al.peak || 0).toFixed(1)}, baseline: ${(al.baseline || 0).toFixed(1)}</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Fatigue Trend</div>
       <div class="metric-value" style="font-size:13px;">${(ft.pct_change || 0) > 0 ? '+' : ''}${(ft.pct_change || 0).toFixed(1)}%</div>
       <div class="metric-sub">${ft.interpretation || 'N/A'}</div>
     </div>
-    <div class="metric-item">
+    <div class="metric-item ${revealCls}">
       <div class="metric-label">Impairment Score</div>
       <div class="metric-value ${(strideCv + peakCv + durCv) > 50 ? 'warn' : 'good'}">${(strideCv + peakCv + durCv).toFixed(1)}</div>
       <div class="metric-sub">Sum of CVs (lower = better)</div>
     </div>
   `;
+
+  if (animate) {
+    const items = grid.querySelectorAll('.metric-item.reveal');
+    items.forEach((item, i) => {
+      setTimeout(() => item.classList.add('visible'), 300 + i * 250);
+    });
+  }
 }
 
 function renderMarkdown(text) {
