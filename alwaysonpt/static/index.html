@@ -1086,6 +1086,8 @@ async function runAnalysis(fullRecording = false) {
   document.getElementById('analyzeAllBtn').disabled = true;
   spinner.classList.remove('hidden');
   hide('result-card');
+  hide('static-gait-metrics-card');
+  hide('static-gait-plot-section');
   resetTrace();
 
   const container = document.getElementById('traceContainer');
@@ -1115,8 +1117,12 @@ async function runAnalysis(fullRecording = false) {
       groundTruth = segData.motion_class;
     }
 
-    await streamAnalysis({ task_type: taskType, domain: 'emg', fs: 1000, signals, record_id: recordId, metadata },
-      groundTruth, container, spinner, status, stepCount);
+    if (taskType === 'live_gait_analysis') {
+      await runStaticGaitAnalysis(signals.emg, 1000, recordId, container, spinner, status);
+    } else {
+      await streamAnalysis({ task_type: taskType, domain: 'emg', fs: 1000, signals, record_id: recordId, metadata },
+        groundTruth, container, spinner, status, stepCount);
+    }
   } catch (err) {
     spinner.classList.add('hidden');
     status.textContent = 'Error: ' + err.message;
@@ -1124,6 +1130,79 @@ async function runAnalysis(fullRecording = false) {
   } finally {
     analyzeBtn.disabled = false;
     document.getElementById('analyzeAllBtn').disabled = false;
+  }
+}
+
+async function runStaticGaitAnalysis(emg, fs, recordId, container, spinner, status) {
+  status.textContent = 'Computing gait metrics...';
+  setTopbar('running', 'Analyzing gait...');
+
+  const res = await fetch(`${API}/api/analyze/gait`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ emg, fs, duration_s: emg.length / fs, record_id: recordId }),
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let assessmentText = '';
+  const traceScroll = document.getElementById('traceScroll');
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let parsed;
+      try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
+
+      if (parsed.event === 'metrics') {
+        status.textContent = 'Metrics computed. AI analyzing...';
+        renderGaitMetrics(parsed.result, 'staticMetricsGrid');
+        show('static-gait-metrics-card');
+
+        if (parsed.plot_url) {
+          document.getElementById('static-gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
+          show('static-gait-plot-section');
+        }
+
+        container.innerHTML = '';
+        const aiDiv = document.createElement('div');
+        aiDiv.className = 'ai-assessment';
+        aiDiv.id = 'staticAiAssessment';
+        container.appendChild(aiDiv);
+
+      } else if (parsed.event === 'text') {
+        assessmentText += parsed.chunk;
+        const aiDiv = document.getElementById('staticAiAssessment');
+        if (aiDiv) {
+          aiDiv.innerHTML = renderMarkdown(assessmentText) + '<span class="ai-cursor"></span>';
+          traceScroll.scrollTop = traceScroll.scrollHeight;
+        }
+        const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(0);
+        document.getElementById('traceStats').textContent = `${elapsed}s`;
+
+      } else if (parsed.event === 'done') {
+        spinner.classList.add('hidden');
+        const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(1);
+        status.textContent = `Done · ${elapsed}s`;
+        document.getElementById('traceStats').textContent = elapsed + 's';
+        setTopbar('idle', `Gait · ${recordId}`);
+
+        const aiDiv = document.getElementById('staticAiAssessment');
+        if (aiDiv) aiDiv.innerHTML = renderMarkdown(assessmentText);
+
+      } else if (parsed.event === 'error') {
+        spinner.classList.add('hidden');
+        status.textContent = 'Error: ' + parsed.message;
+        setTopbar('idle');
+      }
+    }
   }
 }
 
@@ -1528,7 +1607,7 @@ function showResult(data, groundTruth) {
 // GAIT METRICS + MARKDOWN RENDERING (live tab)
 // =============================================================================
 
-function renderGaitMetrics(result) {
+function renderGaitMetrics(result, gridId) {
   const ma = result.muscle_activation;
   if (!ma || ma.error) return;
 
@@ -1545,7 +1624,7 @@ function renderGaitMetrics(result) {
 
   function cvClass(val, thresh) { return val > thresh ? 'warn' : 'good'; }
 
-  const grid = document.getElementById('metricsGrid');
+  const grid = document.getElementById(gridId || 'metricsGrid');
   grid.innerHTML = `
     <div class="metric-item">
       <div class="metric-label">Bursts Detected</div>
