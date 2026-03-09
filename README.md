@@ -314,6 +314,21 @@ The `ios/AlwaysOnPT/` directory contains a Swift app that streams BLE EMG sensor
 
 ---
 
+# Companion iOS App
+
+This repository has a companion iOS app that records EMG + IMU data and provides export \& share functionality. Use the app to collect sessions and produce JSON logs for analysis or upload.
+
+\- App repository: https://github.com/dkman94/yc-always-on-pt.git
+
+\- Key features:
+  \- Real-time EMG \& IMU recording  
+  \- Manual `Export Now` and `Export & Share` for JSON logs  
+  \- Simulator retrieval instructions in the app `readme/README.md`
+
+See the companion app for usage details and export instructions.
+
+---
+
 ## License
 
 This project was built for a hackathon. See individual dataset licenses (PhysioNet requires credentialed access for some datasets).
