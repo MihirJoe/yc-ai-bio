@@ -42,6 +42,7 @@ def compute_statistics(signal: np.ndarray, name: str = "") -> dict:
         'median': float(np.median(clean)),
         'range': float(np.ptp(clean)),
         'rms': float(np.sqrt(np.mean(clean ** 2))),
+        'mean_abs': float(np.mean(np.abs(clean))),
         'skewness': float(_skewness(clean)),
         'kurtosis': float(_kurtosis(clean)),
         'nan_pct': float(np.sum(np.isnan(signal)) / len(signal) * 100) if len(signal) > 0 else 0,
@@ -91,10 +92,10 @@ def compute_psd(signal: np.ndarray, fs: int, name: str = "") -> dict:
 
     return {
         'name': name,
-        'MNF': mnf,
-        'MDF': mdf,
+        'MNF': mnf, 'mnf': mnf, 'mnf_hz': mnf,
+        'MDF': mdf, 'mdf': mdf, 'mdf_hz': mdf,
         'total_power': total_power,
-        'peak_freq': peak_freq,
+        'peak_freq': peak_freq, 'peak_freq_hz': peak_freq,
         'low_band_ratio': float(np.sum(psd[low_mask]) / total_power) if np.any(low_mask) else 0.0,
         'mid_band_ratio': float(np.sum(psd[mid_mask]) / total_power) if np.any(mid_mask) else 0.0,
         'high_band_ratio': float(np.sum(psd[high_mask]) / total_power) if np.any(high_mask) else 0.0,
@@ -339,6 +340,8 @@ def segment_signal(signal: np.ndarray, fs: int, window_s: float = 1.0,
             'rms': float(np.sqrt(np.mean(w ** 2))),
             'mean': float(np.mean(w)),
             'std': float(np.std(w)),
+            'min': float(np.min(w)),
+            'max': float(np.max(w)),
         })
         i += step
 

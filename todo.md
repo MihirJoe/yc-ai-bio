@@ -8,5 +8,8 @@
 
 
 - static demo integration with 16 channels
+- in static remove the 
 
 - live demo integration EMG sensor & imu sensor (download from google drive)
+
+- update readme

@@ -9,3 +9,5 @@ wfdb
 fastapi
 uvicorn[standard]
 websockets
+langsmith
+requests

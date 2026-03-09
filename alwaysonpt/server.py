@@ -1,9 +1,10 @@
 """
 REST API for BioSignalAgent analysis + demo GUI.
 
-Loads real EMG data from the knee_emg dataset (S1File),
-segments it, runs the RLM agent, and compares against ground truth.
-Supports SSE streaming of agent steps in real-time.
+Three tabs in one dashboard:
+  - Knee EMG: RLM agent on Zhang 2017 dataset
+  - Live Sensor: gait analysis pipeline (analyze_activation → Claude)
+  - 16-Channel: adapter-routed analysis
 """
 
 import os
@@ -34,7 +35,7 @@ from alwaysonpt.data_loader import (
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
-PLOTS_DIR = Path(__file__).parent / "output" / "plots"
+PLOTS_DIR = Path(__file__).parent / "static" / "plots"
 DATA_DIR = Path(__file__).parent.parent / "data" / "knee_emg" / "S1File" / "Data"
 LIVE_DIR = Path(__file__).parent.parent / "data" / "live_data_sample"
 MULTI_DIR = Path(__file__).parent.parent / "data" / "multichannel_emg"
@@ -78,9 +79,9 @@ async def list_sources():
         if json_files:
             sources.append({
                 "id": "live_sensor", "name": "Live Sensor (iOS)",
-                "channels": 4, "channel_names": ["EMG", "Pitch", "Roll", "Yaw"],
+                "channels": 1, "channel_names": ["EMG"],
                 "fs": 10, "n_files": len(json_files),
-                "description": "EMG + IMU recordings from iOS sensor app",
+                "description": "EMG recordings from iOS sensor app",
             })
 
     if MULTI_DIR.exists():
@@ -194,9 +195,7 @@ async def list_live_recordings():
                 "duration": data.get("duration", 0),
                 "sampling_rate": data.get("samplingRate", 10),
                 "has_emg": "emgSignal" in data,
-                "has_imu": "imuSamples" in data,
                 "n_emg_samples": len(data.get("emgSignal", [])),
-                "n_imu_samples": len(data.get("imuSamples", [])),
             })
         except Exception:
             pass
@@ -214,36 +213,25 @@ async def list_live_recordings():
 def _build_live_response(filepath: Path, record_id: str, session: str):
     data = json.loads(filepath.read_text())
 
-    signals = {}
     emg_raw = data.get("emgSignal", [])
-    if emg_raw:
-        signals["emg"] = [float(v) for v in emg_raw]
+    signals = {"emg": [float(v) for v in emg_raw]} if emg_raw else {}
 
-    imu_samples = data.get("imuSamples", [])
-    if imu_samples:
-        signals["pitch"] = [s["pitch"] for s in imu_samples]
-        signals["roll"] = [s["roll"] for s in imu_samples]
-        signals["yaw"] = [s["yaw"] for s in imu_samples]
-
-    channel_names = list(signals.keys())
-    first_sig = next(iter(signals.values()), [])
     fs = data.get("samplingRate", 10)
 
     return {
         "source": "live_sensor",
         "record_id": record_id,
         "session": session,
-        "channels": channel_names,
+        "channels": list(signals.keys()),
         "signals": signals,
         "fs": fs,
-        "n_samples": len(first_sig),
-        "duration_s": data.get("duration", len(first_sig) / max(fs, 1)),
+        "n_samples": len(emg_raw),
+        "duration_s": data.get("duration", len(emg_raw) / max(fs, 1)),
         "recorded_at": data.get("recordedAt"),
         "metadata": {
             "session": session,
             "sampling_rate": fs,
             "has_emg": bool(emg_raw),
-            "has_imu": bool(imu_samples),
         },
     }
 
@@ -463,6 +451,347 @@ async def get_task_types():
     return {"task_types": [
         {"id": tid, "name": name} for tid, name in list_task_types()
     ]}
+
+
+@app.get("/api/config")
+async def get_config():
+    return {"status": "ok"}
+
+
+# --- Routed adapter analysis (static mode) ---
+
+class RoutedAnalyzeRequest(BaseModel):
+    query: str
+    recording_id: str = ""
+    task_type: str = "adapter_analysis"
+
+
+@app.post("/api/analyze/routed")
+async def analyze_routed(req: RoutedAnalyzeRequest):
+    """Route physician query to adapters, generate plots, then run agent analysis via SSE."""
+    from alwaysonpt.biosignal_agent import BioSignalAgent
+    from alwaysonpt.datasets.base import BioSignalRecord
+    from alwaysonpt.adapter_router import run_routed_analysis
+    from alwaysonpt.adapter_plots import generate_adapter_plots
+
+    recording_id = req.recording_id
+    filepath = MULTI_DIR / f"{recording_id}.json" if recording_id else None
+
+    if filepath and filepath.exists():
+        data = json.loads(filepath.read_text())
+        channels = data.get("channels", {})
+        ch_names = data.get("channelNames", list(channels.keys()))
+        fs = data.get("samplingRate", 1000)
+        emg_array = np.column_stack([np.array(channels[c], dtype=np.float64) for c in ch_names])
+    else:
+        raise HTTPException(400, "No multichannel recording specified or file not found")
+
+    routed = run_routed_analysis(req.query, emg_array, fs, ch_names)
+    adapter_results = routed["adapter_results"]
+
+    duration_s = len(emg_array) / max(fs, 1)
+    plot_paths = generate_adapter_plots(adapter_results, total_duration_s=duration_s)
+    plot_urls = {k: f"/plots/{Path(v).name}" for k, v in plot_paths.items()}
+
+    first_ch = np.array(channels[ch_names[0]], dtype=np.float64) if ch_names else np.array([])
+    np_signals = {name: np.array(channels[name], dtype=np.float64) for name in ch_names}
+
+    record = BioSignalRecord(
+        record_id=recording_id or "multichannel_demo",
+        domain="multi_emg",
+        signals=np_signals,
+        fs=fs,
+        duration_s=duration_s,
+        metadata={
+            "adapter_results": adapter_results,
+            "routed_adapters": routed["routed_adapters"],
+            "channel_names": ch_names,
+        },
+    )
+
+    step_queue: queue.Queue = queue.Queue()
+
+    def on_step(step, trace):
+        step_queue.put(("step", step))
+
+    def run_agent():
+        try:
+            agent = BioSignalAgent(verbose=True)
+            trace = agent.analyze(
+                record,
+                task_type=req.task_type,
+                question=req.query,
+                record_id=recording_id,
+                on_step=on_step,
+            )
+            report = trace.to_dict()
+            report["adapter_results"] = adapter_results
+            report["routed_adapters"] = routed["routed_adapters"]
+            report["plot_urls"] = plot_urls
+            step_queue.put(("done", report))
+        except Exception as e:
+            step_queue.put(("error", str(e)))
+
+    thread = threading.Thread(target=run_agent, daemon=True)
+    thread.start()
+
+    async def event_stream():
+        adapter_event = {
+            "event": "adapters_done",
+            "routed_adapters": routed["routed_adapters"],
+        }
+        yield f"data: {json.dumps(adapter_event, default=str)}\n\n"
+
+        while True:
+            try:
+                msg = await asyncio.to_thread(step_queue.get, timeout=180)
+            except Exception:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'timeout'})}\n\n"
+                break
+            event_type, payload = msg
+            if event_type == "step":
+                yield f"data: {json.dumps({'event': 'step', 'step': _step_to_dict(payload)})}\n\n"
+            elif event_type == "done":
+                yield f"data: {json.dumps({'event': 'done', 'result': payload}, default=str)}\n\n"
+                break
+            elif event_type == "error":
+                yield f"data: {json.dumps({'event': 'error', 'message': payload})}\n\n"
+                break
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# --- Live sensor analysis ---
+
+class LiveAnalyzeRequest(BaseModel):
+    recording_id: str
+    task_type: str = "activity_classification"
+    question: Optional[str] = None
+
+
+@app.post("/api/analyze/live")
+async def analyze_live(req: LiveAnalyzeRequest):
+    """Load a live JSON recording and run activity classification via SSE."""
+    from alwaysonpt.biosignal_agent import BioSignalAgent
+    from alwaysonpt.data_loader_live import load_live_recording
+
+    filepath = LIVE_DIR / f"{req.recording_id}.json"
+    if not filepath.exists():
+        for sub in LIVE_DIR.iterdir():
+            if sub.is_dir():
+                candidate = sub / f"{req.recording_id}.json"
+                if candidate.exists():
+                    filepath = candidate
+                    break
+        if not filepath.exists():
+            raise HTTPException(404, f"Recording not found: {req.recording_id}")
+
+    record = load_live_recording(filepath)
+
+    step_queue: queue.Queue = queue.Queue()
+
+    def on_step(step, trace):
+        step_queue.put(("step", step))
+
+    def run_agent():
+        try:
+            agent = BioSignalAgent(verbose=True)
+            trace = agent.analyze(
+                record,
+                task_type=req.task_type,
+                question=req.question,
+                record_id=req.recording_id,
+                on_step=on_step,
+            )
+            report = trace.to_dict()
+            step_queue.put(("done", report))
+        except Exception as e:
+            step_queue.put(("error", str(e)))
+
+    thread = threading.Thread(target=run_agent, daemon=True)
+    thread.start()
+
+    async def event_stream():
+        while True:
+            try:
+                msg = await asyncio.to_thread(step_queue.get, timeout=180)
+            except Exception:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'timeout'})}\n\n"
+                break
+            event_type, payload = msg
+            if event_type == "step":
+                yield f"data: {json.dumps({'event': 'step', 'step': _step_to_dict(payload)})}\n\n"
+            elif event_type == "done":
+                yield f"data: {json.dumps({'event': 'done', 'result': payload}, default=str)}\n\n"
+                break
+            elif event_type == "error":
+                yield f"data: {json.dumps({'event': 'error', 'message': payload})}\n\n"
+                break
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# --- Live gait analysis (two-stage: deterministic + Claude) ---
+
+class GaitSignalRequest(BaseModel):
+    emg: list[float]
+    fs: float = 1000.0
+    duration_s: float = 0
+    record_id: str = "static_gait"
+
+
+@app.post("/api/analyze/gait")
+async def analyze_gait_from_signals(req: GaitSignalRequest):
+    """
+    Gait pipeline for raw EMG signals (used by Knee EMG tab's gait task).
+    Same two-stage flow as /api/live/analyze/gait but accepts signal arrays directly.
+    """
+    from alwaysonpt.gait_analyzer import (
+        analyze_activation, generate_gait_plot, stream_gait_assessment,
+    )
+
+    if not req.emg or len(req.emg) < 10:
+        raise HTTPException(400, "EMG signal too short")
+
+    duration = req.duration_s if req.duration_s > 0 else len(req.emg) / max(req.fs, 1)
+
+    activation = analyze_activation(req.emg, duration)
+    if "error" in activation:
+        raise HTTPException(400, activation["error"])
+
+    result = {
+        "recording_info": {
+            "source_file": req.record_id,
+            "duration_s": duration,
+            "stated_sampling_rate": req.fs,
+            "emg_samples": len(req.emg),
+        },
+        "muscle_activation": activation,
+    }
+
+    plot_url = generate_gait_plot(req.emg, result, req.record_id)
+
+    text_queue: queue.Queue = queue.Queue()
+
+    def run_assessment():
+        try:
+            for chunk in stream_gait_assessment(result):
+                text_queue.put(("text", chunk))
+            text_queue.put(("done", None))
+        except Exception as e:
+            text_queue.put(("error", str(e)))
+
+    thread = threading.Thread(target=run_assessment, daemon=True)
+    thread.start()
+
+    async def event_stream():
+        yield f"data: {json.dumps({'event': 'metrics', 'result': result, 'plot_url': plot_url}, default=str)}\n\n"
+
+        while True:
+            try:
+                msg = await asyncio.to_thread(text_queue.get, timeout=120)
+            except Exception:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'timeout'})}\n\n"
+                break
+
+            event_type, payload = msg
+            if event_type == "text":
+                yield f"data: {json.dumps({'event': 'text', 'chunk': payload})}\n\n"
+            elif event_type == "done":
+                yield f"data: {json.dumps({'event': 'done'})}\n\n"
+                break
+            elif event_type == "error":
+                yield f"data: {json.dumps({'event': 'error', 'message': payload})}\n\n"
+                break
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class LiveGaitRequest(BaseModel):
+    recording_id: str
+
+
+@app.post("/api/live/analyze/gait")
+async def analyze_live_gait(req: LiveGaitRequest):
+    """
+    Two-stage live gait pipeline (--live mode):
+      1. Run analyze_activation() for deterministic metrics
+      2. Stream Claude gait assessment via SSE
+    """
+    from alwaysonpt.gait_analyzer import (
+        process_recording, stream_gait_assessment, generate_gait_plot,
+    )
+
+    filepath = _resolve_live_path(req.recording_id)
+    if filepath is None:
+        raise HTTPException(404, f"Recording not found: {req.recording_id}")
+
+    data = json.loads(filepath.read_text())
+    emg_signal = data.get("emgSignal", [])
+    result = process_recording(data)
+
+    if "error" in result:
+        raise HTTPException(400, result["error"])
+
+    plot_url = generate_gait_plot(emg_signal, result, req.recording_id)
+
+    text_queue: queue.Queue = queue.Queue()
+
+    def run_assessment():
+        try:
+            for chunk in stream_gait_assessment(result):
+                text_queue.put(("text", chunk))
+            text_queue.put(("done", None))
+        except Exception as e:
+            text_queue.put(("error", str(e)))
+
+    thread = threading.Thread(target=run_assessment, daemon=True)
+    thread.start()
+
+    async def event_stream():
+        metrics_event = {
+            "event": "metrics",
+            "result": result,
+            "plot_url": plot_url,
+        }
+        yield f"data: {json.dumps(metrics_event, default=str)}\n\n"
+
+        while True:
+            try:
+                msg = await asyncio.to_thread(text_queue.get, timeout=120)
+            except Exception:
+                yield f"data: {json.dumps({'event': 'error', 'message': 'timeout'})}\n\n"
+                break
+
+            event_type, payload = msg
+            if event_type == "text":
+                yield f"data: {json.dumps({'event': 'text', 'chunk': payload})}\n\n"
+            elif event_type == "done":
+                yield f"data: {json.dumps({'event': 'done'})}\n\n"
+                break
+            elif event_type == "error":
+                yield f"data: {json.dumps({'event': 'error', 'message': payload})}\n\n"
+                break
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _resolve_live_path(recording_id: str) -> Path | None:
+    """Find a live recording JSON file by its ID."""
+    filepath = LIVE_DIR / f"{recording_id}.json"
+    if filepath.exists():
+        return filepath
+    parts = recording_id.split("/", 1)
+    if len(parts) == 2:
+        filepath = LIVE_DIR / parts[0] / f"{parts[1]}.json"
+        if filepath.exists():
+            return filepath
+    for sub in LIVE_DIR.iterdir():
+        if sub.is_dir():
+            candidate = sub / f"{recording_id}.json"
+            if candidate.exists():
+                return candidate
+    return None
 
 
 @app.get("/health")

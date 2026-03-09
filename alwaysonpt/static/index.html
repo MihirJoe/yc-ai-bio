@@ -361,6 +361,64 @@
     padding: 8px 12px; background: var(--surface2);
     border-radius: 4px; border: 1px solid var(--border);
   }
+
+  /* --- Gait Metrics Card (live mode) --- */
+  .metrics-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 16px; margin-top: 12px;
+  }
+  .metrics-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;
+    margin-top: 10px;
+  }
+  .metric-item {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 8px 10px;
+  }
+  .metric-label {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 2px;
+  }
+  .metric-value {
+    font-size: 18px; font-weight: 700; color: var(--accent);
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+  }
+  .metric-value.warn { color: var(--warn); }
+  .metric-value.good { color: var(--green); }
+  .metric-sub {
+    font-size: 10px; color: var(--text-dim); margin-top: 1px;
+  }
+
+  /* --- AI Assessment Panel (live mode) --- */
+  .ai-assessment {
+    padding: 16px; line-height: 1.65; font-size: 13px;
+    color: var(--text); overflow-y: auto; flex: 1;
+  }
+  .ai-assessment h1, .ai-assessment h2, .ai-assessment h3 {
+    color: var(--accent); margin-top: 14px; margin-bottom: 6px;
+  }
+  .ai-assessment h1 { font-size: 16px; }
+  .ai-assessment h2 { font-size: 14px; }
+  .ai-assessment h3 { font-size: 13px; }
+  .ai-assessment strong { color: #e0e6ed; }
+  .ai-assessment ul, .ai-assessment ol { padding-left: 18px; margin: 4px 0; }
+  .ai-assessment li { margin-bottom: 3px; }
+  .ai-assessment code {
+    background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12px;
+  }
+  .ai-assessment table {
+    width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px;
+  }
+  .ai-assessment th, .ai-assessment td {
+    padding: 5px 8px; border: 1px solid var(--border); text-align: left;
+  }
+  .ai-assessment th { background: var(--surface2); color: var(--text-dim); font-weight: 600; }
+  .ai-cursor {
+    display: inline-block; width: 2px; height: 14px;
+    background: var(--accent); vertical-align: text-bottom;
+    animation: blink 0.8s ease infinite;
+  }
 </style>
 </head>
 <body>
@@ -405,6 +463,7 @@
             <select id="taskType">
               <option value="emg_classification">EMG Classification</option>
               <option value="open_analysis">Open Analysis</option>
+              <option value="live_gait_analysis">Gait Analysis</option>
             </select>
           </div>
           <button id="loadBtn" onclick="startSession()">Load</button>
@@ -441,23 +500,27 @@
           <span class="status-text" id="statusText"></span>
         </div>
       </div>
+
+      <!-- Gait Metrics Card (shown when live_gait_analysis task selected) -->
+      <div class="metrics-card hidden" id="static-gait-metrics-card">
+        <div class="section-label">Gait Metrics</div>
+        <div class="metrics-grid" id="staticMetricsGrid"></div>
+      </div>
+      <div class="hidden" id="static-gait-plot-section" style="margin-top:12px;">
+        <div class="section-label">Gait Analysis Plot</div>
+        <img id="static-gait-plot-img" src="" alt="Gait analysis plot"
+             style="width:100%; border-radius:8px; border:1px solid var(--border); background:#0b0f14;" />
+      </div>
     </div>
 
     <!-- ===== LIVE SENSOR SOURCE ===== -->
     <div id="src-live_sensor" class="hidden">
       <div class="section">
-        <div class="section-label">Live Sensor Recording</div>
+        <div class="section-label">Live EMG Recording</div>
         <div class="controls">
           <div class="field">
             <label>Recording</label>
             <select id="liveRecSelect"></select>
-          </div>
-          <div class="field">
-            <label>Task</label>
-            <select id="liveTaskType">
-              <option value="emg_classification">EMG Classification</option>
-              <option value="open_analysis">Open Analysis</option>
-            </select>
           </div>
           <button id="liveLoadBtn" onclick="loadLiveRecording()">Load</button>
         </div>
@@ -480,25 +543,39 @@
           <span class="status-text" id="liveStatusText"></span>
         </div>
       </div>
+
+      <!-- Gait Metrics Card (live mode only) -->
+      <div class="metrics-card hidden" id="gait-metrics-card">
+        <div class="section-label">Gait Metrics</div>
+        <div class="metrics-grid" id="metricsGrid"></div>
+      </div>
+
+      <!-- Gait Analysis Plot -->
+      <div class="hidden" id="gait-plot-section" style="margin-top:12px;">
+        <div class="section-label">Gait Analysis Plot</div>
+        <img id="gait-plot-img" src="" alt="Gait analysis plot"
+             style="width:100%; border-radius:8px; border:1px solid var(--border); background:#0b0f14;" />
+      </div>
     </div>
 
-    <!-- ===== MULTICHANNEL SOURCE ===== -->
+    <!-- ===== MULTICHANNEL SOURCE (Static Mode) ===== -->
     <div id="src-multichannel" class="hidden">
       <div class="section">
-        <div class="section-label">16-Channel EMG</div>
+        <div class="section-label">16-Channel EMG — Adapter Routing</div>
         <div class="controls">
           <div class="field">
             <label>Recording</label>
             <select id="multiRecSelect"></select>
           </div>
-          <div class="field">
-            <label>Task</label>
-            <select id="multiTaskType">
-              <option value="emg_classification">EMG Classification</option>
-              <option value="open_analysis">Open Analysis</option>
-            </select>
-          </div>
           <button id="multiLoadBtn" onclick="loadMultiRecording()">Load</button>
+        </div>
+        <div style="margin-top:8px; display:flex; gap:8px; align-items:end;">
+          <div class="field" style="flex:1;">
+            <label>Physician Query</label>
+            <input type="text" id="physicianQuery" placeholder="e.g. How fatigued is the patient? Give me a full report…"
+              style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:4px;
+                     color:var(--text); padding:6px 10px; font-size:12px; font-family:inherit; outline:none;" />
+          </div>
         </div>
       </div>
 
@@ -514,10 +591,17 @@
 
       <div class="hidden" id="multi-analyze-section">
         <div class="analyze-bar">
-          <button id="multiAnalyzeBtn" onclick="runMultiAnalysis()">Analyze Recording</button>
+          <button id="multiAnalyzeBtn" onclick="runMultiAnalysis()">Analyze (Routed)</button>
           <div class="spinner hidden" id="multiSpinner"></div>
           <span class="status-text" id="multiStatusText"></span>
         </div>
+      </div>
+
+      <!-- Adapter Results + Plots (2x2 grid) -->
+      <div class="hidden" id="adapterPlotsSection" style="margin-top:12px;">
+        <div class="section-label">Adapter Visualizations</div>
+        <div id="adapterRoutedBadge" style="font-size:11px; color:var(--text-dim); margin-bottom:8px;"></div>
+        <div id="adapterPlotGrid" style="display:grid; grid-template-columns:1fr 1fr; gap:8px;"></div>
       </div>
     </div>
 
@@ -610,10 +694,7 @@ async function init() {
     for (const rec of liveRecordings) {
       const opt = document.createElement('option');
       opt.value = rec.id;
-      const info = [];
-      if (rec.has_emg) info.push(`EMG:${rec.n_emg_samples}`);
-      if (rec.has_imu) info.push(`IMU:${rec.n_imu_samples}`);
-      opt.textContent = `${rec.session} — ${rec.filename} (${info.join(', ')})`;
+      opt.textContent = `${rec.session} — ${rec.filename} (EMG: ${rec.n_emg_samples} samples)`;
       sel.appendChild(opt);
     }
   } catch(e) {}
@@ -643,7 +724,7 @@ function buildSourceTabs(sources) {
 
   const allSources = [
     { id: 'knee_emg', label: 'Knee EMG', fallback: '2ch · 1kHz' },
-    { id: 'live_sensor', label: 'Live Sensor', fallback: 'EMG + IMU' },
+    { id: 'live_sensor', label: 'Live EMG', fallback: 'EMG' },
     { id: 'multichannel', label: '16-Channel', fallback: '16ch EMG' },
   ];
 
@@ -1054,22 +1135,85 @@ async function runLiveAnalysis() {
   btn.disabled = true;
   spinner.classList.remove('hidden');
   hide('result-card');
+  hide('gait-metrics-card');
+  hide('gait-plot-section');
   resetTrace();
 
-  const container = document.getElementById('traceContainer');
   analysisStartTime = Date.now();
-  setTopbar('running');
-
-  const taskType = document.getElementById('liveTaskType').value;
-  const signals = {};
-  if (liveData.signals.emg) signals.emg = liveData.signals.emg;
+  setTopbar('running', 'Analyzing gait...');
+  status.textContent = 'Computing metrics...';
 
   try {
-    await streamAnalysis({
-      task_type: taskType, domain: 'emg', fs: liveData.fs,
-      signals, record_id: liveData.record_id,
-      metadata: liveData.metadata,
-    }, null, container, spinner, status, 0);
+    const res = await fetch(`${API}/api/live/analyze/gait`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recording_id: liveData.record_id }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let assessmentText = '';
+    const traceScroll = document.getElementById('traceScroll');
+    const container = document.getElementById('traceContainer');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let parsed;
+        try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (parsed.event === 'metrics') {
+          status.textContent = 'Metrics computed. AI analyzing...';
+          renderGaitMetrics(parsed.result);
+          show('gait-metrics-card');
+
+          if (parsed.plot_url) {
+            document.getElementById('gait-plot-img').src = parsed.plot_url + '?t=' + Date.now();
+            show('gait-plot-section');
+          }
+
+          container.innerHTML = '';
+          const aiDiv = document.createElement('div');
+          aiDiv.className = 'ai-assessment';
+          aiDiv.id = 'aiAssessmentContent';
+          container.appendChild(aiDiv);
+
+        } else if (parsed.event === 'text') {
+          assessmentText += parsed.chunk;
+          const aiDiv = document.getElementById('aiAssessmentContent');
+          if (aiDiv) {
+            aiDiv.innerHTML = renderMarkdown(assessmentText) + '<span class="ai-cursor"></span>';
+            traceScroll.scrollTop = traceScroll.scrollHeight;
+          }
+          const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(0);
+          document.getElementById('traceStats').textContent = `${elapsed}s`;
+
+        } else if (parsed.event === 'done') {
+          spinner.classList.add('hidden');
+          const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(1);
+          status.textContent = `Done · ${elapsed}s`;
+          document.getElementById('traceStats').textContent = elapsed + 's';
+          setTopbar('idle', `Live · ${liveData.record_id}`);
+
+          const aiDiv = document.getElementById('aiAssessmentContent');
+          if (aiDiv) {
+            aiDiv.innerHTML = renderMarkdown(assessmentText);
+          }
+
+        } else if (parsed.event === 'error') {
+          spinner.classList.add('hidden');
+          status.textContent = 'Error: ' + parsed.message;
+          setTopbar('idle');
+        }
+      }
+    }
   } catch(err) {
     spinner.classList.add('hidden');
     status.textContent = 'Error: ' + err.message;
@@ -1087,21 +1231,21 @@ async function runMultiAnalysis() {
   btn.disabled = true;
   spinner.classList.remove('hidden');
   hide('result-card');
+  hide('adapterPlotsSection');
   resetTrace();
 
   const container = document.getElementById('traceContainer');
   analysisStartTime = Date.now();
   setTopbar('running');
 
-  const taskType = document.getElementById('multiTaskType').value;
+  const query = document.getElementById('physicianQuery').value || 'Give me a full physio report';
 
   try {
-    await streamAnalysis({
-      task_type: taskType, domain: 'emg', fs: multiData.fs,
-      signals: multiData.signals_full || multiData.signals,
-      record_id: multiData.record_id,
-      metadata: multiData.metadata,
-    }, null, container, spinner, status, 0);
+    await streamAnalysis(
+      { query, recording_id: multiData.record_id, task_type: 'adapter_analysis' },
+      null, container, spinner, status, 0,
+      `${API}/api/analyze/routed`
+    );
   } catch(err) {
     spinner.classList.add('hidden');
     status.textContent = 'Error: ' + err.message;
@@ -1111,10 +1255,11 @@ async function runMultiAnalysis() {
   }
 }
 
-async function streamAnalysis(body, groundTruth, container, spinner, status, stepCount) {
+async function streamAnalysis(body, groundTruth, container, spinner, status, stepCount, endpoint) {
   status.textContent = 'Agent running…';
+  const url = endpoint || `${API}/api/analyze/stream`;
 
-  const res = await fetch(`${API}/api/analyze/stream`, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -1135,7 +1280,10 @@ async function streamAnalysis(body, groundTruth, container, spinner, status, ste
       if (!line.startsWith('data: ')) continue;
       let parsed;
       try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
-      if (parsed.event === 'step') {
+
+      if (parsed.event === 'adapters_done') {
+        status.textContent = `Routed to: ${(parsed.routed_adapters || []).join(', ')} — agent reasoning…`;
+      } else if (parsed.event === 'step') {
         stepCount++;
         const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(0);
         status.textContent = `Step ${stepCount}`;
@@ -1145,15 +1293,44 @@ async function streamAnalysis(body, groundTruth, container, spinner, status, ste
         spinner.classList.add('hidden');
         const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(1);
         status.textContent = `Done · ${elapsed}s`;
-        document.getElementById('traceStats').textContent = `${parsed.result.n_steps} steps · ${elapsed}s`;
+        document.getElementById('traceStats').textContent = `${parsed.result.n_steps || stepCount} steps · ${elapsed}s`;
         setTopbar('idle');
         showResult(parsed.result, groundTruth);
+        if (parsed.result.plot_urls) {
+          showAdapterPlots(parsed.result.routed_adapters, parsed.result.plot_urls);
+        }
       } else if (parsed.event === 'error') {
         spinner.classList.add('hidden');
         status.textContent = 'Error: ' + parsed.message;
         setTopbar('idle');
       }
     }
+  }
+}
+
+function showAdapterPlots(routedAdapters, plotUrls) {
+  const section = document.getElementById('adapterPlotsSection');
+  if (!section) return;
+
+  const badge = document.getElementById('adapterRoutedBadge');
+  badge.textContent = `Routed to: ${(routedAdapters || []).join(', ')}`;
+
+  const grid = document.getElementById('adapterPlotGrid');
+  grid.innerHTML = '';
+
+  const plotOrder = ['fatigue', 'effort', 'pose', 'intent'];
+  for (const name of plotOrder) {
+    const url = (plotUrls || {})[name];
+    if (!url) continue;
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = name + ' plot';
+    img.style.cssText = 'width:100%; border-radius:4px; border:1px solid var(--border);';
+    grid.appendChild(img);
+  }
+
+  if (grid.children.length > 0) {
+    show('adapterPlotsSection');
   }
 }
 
@@ -1345,6 +1522,109 @@ function showResult(data, groundTruth) {
     <span>Steps: ${data.n_steps || 0}</span>
     <span>Record: ${data.segment_id || '—'}</span>
   `;
+}
+
+// =============================================================================
+// GAIT METRICS + MARKDOWN RENDERING (live tab)
+// =============================================================================
+
+function renderGaitMetrics(result) {
+  const ma = result.muscle_activation;
+  if (!ma || ma.error) return;
+
+  const sa = ma.stride_analysis || {};
+  const bv = ma.burst_variability || {};
+  const wr = ma.work_rest || {};
+  const ft = ma.fatigue_trend || {};
+  const al = ma.activation_level || {};
+  const cd = ma.contraction_detection || {};
+
+  const strideCv = sa.stride_time_cv_pct || 0;
+  const peakCv = bv.peak_cv_pct || 0;
+  const durCv = bv.duration_cv_pct || 0;
+
+  function cvClass(val, thresh) { return val > thresh ? 'warn' : 'good'; }
+
+  const grid = document.getElementById('metricsGrid');
+  grid.innerHTML = `
+    <div class="metric-item">
+      <div class="metric-label">Bursts Detected</div>
+      <div class="metric-value">${cd.burst_count || 0}</div>
+      <div class="metric-sub">Active ${(cd.active_time_pct || 0).toFixed(0)}% of time</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Cadence</div>
+      <div class="metric-value">${(sa.cadence_strides_per_min || 0).toFixed(1)}</div>
+      <div class="metric-sub">strides/min</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Stride CV</div>
+      <div class="metric-value ${cvClass(strideCv, 20)}">${strideCv.toFixed(1)}%</div>
+      <div class="metric-sub">${strideCv > 20 ? 'Variable timing' : 'Consistent timing'}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Peak Amplitude CV</div>
+      <div class="metric-value ${cvClass(peakCv, 15)}">${peakCv.toFixed(1)}%</div>
+      <div class="metric-sub">${peakCv > 15 ? 'Inconsistent force' : 'Consistent force'}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Duration CV</div>
+      <div class="metric-value ${cvClass(durCv, 15)}">${durCv.toFixed(1)}%</div>
+      <div class="metric-sub">${durCv > 15 ? 'Variable recruitment' : 'Uniform recruitment'}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Work-Rest Ratio</div>
+      <div class="metric-value">${(wr.work_rest_ratio || 0).toFixed(2)}</div>
+      <div class="metric-sub">${(wr.active_time_s || 0).toFixed(1)}s active / ${(wr.rest_time_s || 0).toFixed(1)}s rest</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Mean Activation</div>
+      <div class="metric-value">${(al.mean || 0).toFixed(1)}</div>
+      <div class="metric-sub">peak: ${(al.peak || 0).toFixed(1)}, baseline: ${(al.baseline || 0).toFixed(1)}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Fatigue Trend</div>
+      <div class="metric-value" style="font-size:13px;">${(ft.pct_change || 0) > 0 ? '+' : ''}${(ft.pct_change || 0).toFixed(1)}%</div>
+      <div class="metric-sub">${ft.interpretation || 'N/A'}</div>
+    </div>
+    <div class="metric-item">
+      <div class="metric-label">Impairment Score</div>
+      <div class="metric-value ${(strideCv + peakCv + durCv) > 50 ? 'warn' : 'good'}">${(strideCv + peakCv + durCv).toFixed(1)}</div>
+      <div class="metric-sub">Sum of CVs (lower = better)</div>
+    </div>
+  `;
+}
+
+function renderMarkdown(text) {
+  let html = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, (match) => '<ul>' + match + '</ul>');
+  html = html.replace(/\n{2,}/g, '<br><br>');
+  html = html.replace(/\n/g, '<br>');
+
+  html = html.replace(/(<br>)?\|(.+\|)+(<br>)?/g, (match) => {
+    const rows = match.replace(/<br>/g, '\n').trim().split('\n').filter(r => r.trim());
+    if (rows.length < 2) return match;
+    let table = '<table>';
+    rows.forEach((row, i) => {
+      if (row.trim().match(/^\|[\s-|]+\|$/)) return;
+      const cells = row.split('|').filter(c => c.trim() !== '');
+      const tag = i === 0 ? 'th' : 'td';
+      table += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+    });
+    table += '</table>';
+    return table;
+  });
+
+  return html;
 }
 
 function show(id) { document.getElementById(id).classList.remove('hidden'); }

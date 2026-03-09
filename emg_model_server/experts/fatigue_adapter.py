@@ -127,7 +127,7 @@ class FatigueAdapter(BaseEMGExpert):
                 "median_freq_proxy": mf_vals[i],
                 "fatigue_proxy": float(np.clip((1 - mf_vals[i] / (max(mf_vals) + 1e-6)), 0, 1)),
             }
-            for i in range(min(5, len(feats_per_window)))
+            for i in range(len(feats_per_window))
         ]
 
         evidence = {

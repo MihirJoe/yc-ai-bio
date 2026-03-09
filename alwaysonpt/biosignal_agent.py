@@ -44,6 +44,10 @@ class BioSignalAgent:
     MAX_TURNS = 6
     MAX_SUB_LLM_CALLS = 3
 
+    _TASK_OVERRIDES = {
+        'adapter_analysis': {'max_turns': 12, 'max_tokens': 3000},
+    }
+
     def __init__(self, verbose: bool = True):
         self.client = anthropic.Anthropic()
         self.verbose = verbose
@@ -128,6 +132,55 @@ class BioSignalAgent:
             except ImportError:
                 pass
 
+        if domain_hint == 'emg_imu':
+            try:
+                from alwaysonpt.imu_tools import (
+                    compute_orientation_stats, detect_gait_cycles,
+                    compute_cadence, compute_orientation_variability,
+                    detect_activity_transitions, classify_posture,
+                )
+                imu_fns = {
+                    'compute_orientation_stats': compute_orientation_stats,
+                    'detect_gait_cycles': detect_gait_cycles,
+                    'compute_cadence': compute_cadence,
+                    'compute_orientation_variability': compute_orientation_variability,
+                    'detect_activity_transitions': detect_activity_transitions,
+                    'classify_posture': classify_posture,
+                }
+                self.repl_globals.update(imu_fns)
+                tool_fns.update(imu_fns)
+            except ImportError:
+                pass
+
+        if domain_hint == 'multi_emg':
+            adapter_results = record.metadata.get('adapter_results', {})
+            self.repl_globals['adapter_results'] = adapter_results
+
+        def search_literature(query: str, n: int = 3) -> str:
+            """Search clinical literature via Exa API. Returns titles, URLs, and snippets."""
+            import requests as _req
+            api_key = os.environ.get('EXA_API_KEY', '')
+            if not api_key:
+                return "EXA_API_KEY not set — literature search unavailable."
+            try:
+                resp = _req.post(
+                    'https://api.exa.ai/search',
+                    headers={'x-api-key': api_key, 'Content-Type': 'application/json'},
+                    json={'query': query, 'numResults': n, 'type': 'auto',
+                          'contents': {'text': {'maxCharacters': 500}}},
+                    timeout=10,
+                )
+                results = resp.json().get('results', [])
+                return '\n\n'.join(
+                    f"**{r.get('title', 'Untitled')}**\n{r.get('url', '')}\n{r.get('text', '')[:300]}"
+                    for r in results
+                ) or "No results found."
+            except Exception as e:
+                return f"Literature search error: {e}"
+
+        tool_fns['search_literature'] = search_literature
+        self.repl_globals['search_literature'] = search_literature
+
         tools_str = self._build_tool_signatures(tool_fns)
         all_fns = dict(tool_fns)
 
@@ -170,6 +223,10 @@ class BioSignalAgent:
             on_step: optional callback(step, trace) called after each step
         """
         task_config = get_task_config(task_type)
+        overrides = self._TASK_OVERRIDES.get(task_type, {})
+        max_turns = overrides.get('max_turns', self.MAX_TURNS)
+        max_tokens = overrides.get('max_tokens', 1500)
+
         trace = ReasoningTrace(segment_id=record_id or record.record_id,
                                _on_step=on_step)
         self._sub_llm_count = 0
@@ -179,20 +236,20 @@ class BioSignalAgent:
         for var in task_config['output_vars']:
             self.repl_globals[var] = None
 
-        system_prompt = self._build_system_prompt(task_config, record, question)
+        system_prompt = self._build_system_prompt(task_config, record, question, max_turns)
         user_msg = self._build_user_message(record, task_type, question)
 
         messages = [{'role': 'user', 'content': user_msg}]
 
-        for turn in range(self.MAX_TURNS):
+        for turn in range(max_turns):
             if self.verbose:
-                print(f"  [Turn {turn + 1}/{self.MAX_TURNS}]")
+                print(f"  [Turn {turn + 1}/{max_turns}]")
 
             t0 = time.time()
             try:
                 response = self.client.messages.create(
                     model=self.ROOT_MODEL,
-                    max_tokens=1500,
+                    max_tokens=max_tokens,
                     system=system_prompt,
                     messages=messages,
                 )
@@ -304,13 +361,20 @@ class BioSignalAgent:
 
     def _build_system_prompt(self, task_config: dict,
                               record: BioSignalRecord,
-                              question: str = None) -> str:
+                              question: str = None,
+                              max_turns: int = None) -> str:
         """Build the system prompt from task config."""
         prompt_template = task_config['system_prompt']
-        return prompt_template.format(
-            max_turns=self.MAX_TURNS,
-            question=question or '',
-        )
+        fmt_kwargs = {
+            'max_turns': max_turns or self.MAX_TURNS,
+            'question': question or '',
+        }
+        if '{adapter_results}' in prompt_template:
+            import json as _json
+            fmt_kwargs['adapter_results'] = _json.dumps(
+                record.metadata.get('adapter_results', {}), indent=2, default=str
+            )
+        return prompt_template.format(**fmt_kwargs)
 
     def _build_user_message(self, record: BioSignalRecord,
                              task_type: str, question: str = None) -> str:
