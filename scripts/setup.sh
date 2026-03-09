@@ -9,6 +9,9 @@ cd "$REPO_ROOT"
 echo "=== Initializing submodules ==="
 git submodule update --init --recursive
 
+echo "=== Deploying emg2pose api.py (inference wrapper) ==="
+cp "$REPO_ROOT/scripts/emg2pose_api.py" "$REPO_ROOT/emg2pose/api.py"
+
 echo "=== Installing Python package (editable) ==="
 pip install -e .
 
