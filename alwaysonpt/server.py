@@ -36,6 +36,8 @@ from alwaysonpt.data_loader import (
 STATIC_DIR = Path(__file__).parent / "static"
 PLOTS_DIR = Path(__file__).parent / "output" / "plots"
 DATA_DIR = Path(__file__).parent.parent / "data" / "knee_emg" / "S1File" / "Data"
+LIVE_DIR = Path(__file__).parent.parent / "data" / "live_data_sample"
+MULTI_DIR = Path(__file__).parent.parent / "data" / "multichannel_emg"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +53,52 @@ app.add_middleware(
 app.mount("/plots", StaticFiles(directory=str(PLOTS_DIR)), name="plots")
 
 
-# --- Data loading endpoints ---
+# --- Data source overview ---
+
+@app.get("/api/sources")
+async def list_sources():
+    """List available data sources for the demo."""
+    sources = []
+
+    if DATA_DIR.exists():
+        count = len(list(DATA_DIR.glob("*.txt")))
+        if count > 0:
+            sources.append({
+                "id": "knee_emg", "name": "Knee EMG (Zhang 2017)",
+                "channels": 2, "channel_names": ["EMG (VM)", "Goniometer"],
+                "fs": 1000, "n_files": count,
+                "description": "14 subjects × 3 exercises, 2-channel (EMG + goniometer), 1kHz",
+            })
+
+    if LIVE_DIR.exists():
+        json_files = list(LIVE_DIR.glob("*.json"))
+        for d in LIVE_DIR.iterdir():
+            if d.is_dir():
+                json_files.extend(d.glob("*.json"))
+        if json_files:
+            sources.append({
+                "id": "live_sensor", "name": "Live Sensor (iOS)",
+                "channels": 4, "channel_names": ["EMG", "Pitch", "Roll", "Yaw"],
+                "fs": 10, "n_files": len(json_files),
+                "description": "EMG + IMU recordings from iOS sensor app",
+            })
+
+    if MULTI_DIR.exists():
+        json_files = list(MULTI_DIR.glob("*.json"))
+        if json_files:
+            first = json.loads(json_files[0].read_text())
+            ch_names = first.get("channelNames", [])
+            sources.append({
+                "id": "multichannel", "name": "16-Channel EMG",
+                "channels": len(ch_names), "channel_names": ch_names,
+                "fs": first.get("samplingRate", 1000), "n_files": len(json_files),
+                "description": f"{len(ch_names)}-channel EMG array, {first.get('samplingRate', 1000)}Hz",
+            })
+
+    return {"sources": sources}
+
+
+# --- Knee EMG endpoints ---
 
 @app.get("/api/subjects")
 async def list_subjects():
@@ -125,6 +172,157 @@ async def load_segment(subject_id: int, exercise: str, seg_idx: int):
         "emg": seg["emg"].tolist(), "gonio": seg["gonio"].tolist(),
         "fs": 1000, "n_samples": len(seg["emg"]),
         "duration_s": round(len(seg["emg"]) / 1000.0, 3),
+    }
+
+
+# --- Live sensor endpoints ---
+
+@app.get("/api/live/recordings")
+async def list_live_recordings():
+    if not LIVE_DIR.exists():
+        return {"recordings": []}
+
+    recordings = []
+
+    def _add_json(jf: Path, session: str):
+        try:
+            data = json.loads(jf.read_text())
+            recordings.append({
+                "id": f"{session}/{jf.stem}" if session else jf.stem,
+                "session": session or "default",
+                "filename": jf.name,
+                "duration": data.get("duration", 0),
+                "sampling_rate": data.get("samplingRate", 10),
+                "has_emg": "emgSignal" in data,
+                "has_imu": "imuSamples" in data,
+                "n_emg_samples": len(data.get("emgSignal", [])),
+                "n_imu_samples": len(data.get("imuSamples", [])),
+            })
+        except Exception:
+            pass
+
+    for item in sorted(LIVE_DIR.iterdir()):
+        if item.is_file() and item.suffix == ".json":
+            _add_json(item, "")
+        elif item.is_dir():
+            for jf in sorted(item.glob("*.json")):
+                _add_json(jf, item.name)
+
+    return {"recordings": recordings}
+
+
+def _build_live_response(filepath: Path, record_id: str, session: str):
+    data = json.loads(filepath.read_text())
+
+    signals = {}
+    emg_raw = data.get("emgSignal", [])
+    if emg_raw:
+        signals["emg"] = [float(v) for v in emg_raw]
+
+    imu_samples = data.get("imuSamples", [])
+    if imu_samples:
+        signals["pitch"] = [s["pitch"] for s in imu_samples]
+        signals["roll"] = [s["roll"] for s in imu_samples]
+        signals["yaw"] = [s["yaw"] for s in imu_samples]
+
+    channel_names = list(signals.keys())
+    first_sig = next(iter(signals.values()), [])
+    fs = data.get("samplingRate", 10)
+
+    return {
+        "source": "live_sensor",
+        "record_id": record_id,
+        "session": session,
+        "channels": channel_names,
+        "signals": signals,
+        "fs": fs,
+        "n_samples": len(first_sig),
+        "duration_s": data.get("duration", len(first_sig) / max(fs, 1)),
+        "recorded_at": data.get("recordedAt"),
+        "metadata": {
+            "session": session,
+            "sampling_rate": fs,
+            "has_emg": bool(emg_raw),
+            "has_imu": bool(imu_samples),
+        },
+    }
+
+
+@app.get("/api/live/load/{recording}")
+async def load_live_recording(recording: str):
+    filepath = LIVE_DIR / f"{recording}.json"
+    if not filepath.exists():
+        raise HTTPException(404, f"Recording not found: {recording}")
+    return _build_live_response(filepath, recording, "default")
+
+
+@app.get("/api/live/load/{session}/{recording}")
+async def load_live_recording_in_session(session: str, recording: str):
+    filepath = LIVE_DIR / session / f"{recording}.json"
+    if not filepath.exists():
+        raise HTTPException(404, f"Recording not found: {session}/{recording}")
+    return _build_live_response(filepath, f"{session}/{recording}", session)
+
+
+# --- Multichannel EMG endpoints ---
+
+@app.get("/api/multichannel/recordings")
+async def list_multichannel_recordings():
+    if not MULTI_DIR.exists():
+        return {"recordings": []}
+
+    recordings = []
+    for jf in sorted(MULTI_DIR.glob("*.json")):
+        try:
+            data = json.loads(jf.read_text())
+            ch_names = data.get("channelNames", list(data.get("channels", {}).keys()))
+            recordings.append({
+                "id": jf.stem,
+                "filename": jf.name,
+                "scenario": data.get("scenario", jf.stem),
+                "n_channels": len(ch_names),
+                "channel_names": ch_names,
+                "duration": data.get("duration", 0),
+                "sampling_rate": data.get("samplingRate", 1000),
+                "source": data.get("source", "unknown"),
+            })
+        except Exception:
+            continue
+
+    return {"recordings": recordings}
+
+
+@app.get("/api/multichannel/load/{recording_id}")
+async def load_multichannel_recording(recording_id: str):
+    filepath = MULTI_DIR / f"{recording_id}.json"
+    if not filepath.exists():
+        raise HTTPException(404, f"Recording not found: {recording_id}")
+
+    data = json.loads(filepath.read_text())
+    channels = data.get("channels", {})
+    ch_names = data.get("channelNames", list(channels.keys()))
+    fs = data.get("samplingRate", 1000)
+
+    signals = {}
+    for name in ch_names:
+        raw = channels.get(name, [])
+        step = max(1, len(raw) // 2000)
+        signals[name] = [float(raw[i]) for i in range(0, len(raw), step)]
+
+    first_sig = channels.get(ch_names[0], []) if ch_names else []
+
+    return {
+        "source": "multichannel",
+        "record_id": recording_id,
+        "scenario": data.get("scenario", recording_id),
+        "channels": ch_names,
+        "signals": signals,
+        "signals_full": {name: channels[name] for name in ch_names},
+        "fs": fs,
+        "n_samples": len(first_sig),
+        "duration_s": data.get("duration", len(first_sig) / max(fs, 1)),
+        "downsample_step": max(1, len(first_sig) // 2000),
+        "metadata": data.get("metadata", {}),
     }
 
 

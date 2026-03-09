@@ -50,10 +50,29 @@
   .topbar-dot.running { background: var(--orange); animation: blink 1s ease infinite; }
   @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
 
+  /* --- Source Tabs --- */
+  .source-tabs {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border);
+    background: var(--surface); padding: 0 20px;
+  }
+  .source-tab {
+    padding: 8px 16px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s; user-select: none;
+  }
+  .source-tab:hover { color: var(--text); }
+  .source-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .source-tab .tab-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 8px;
+    background: var(--surface2); margin-left: 6px; vertical-align: middle;
+  }
+  .source-tab.active .tab-badge { background: rgba(59,158,255,0.15); color: var(--accent); }
+
   /* --- Split Layout --- */
   .split {
     display: grid; grid-template-columns: 1fr 1fr;
-    height: calc(100vh - 48px); overflow: hidden;
+    height: calc(100vh - 48px - 36px); overflow: hidden;
   }
   @media (max-width: 900px) {
     .split { grid-template-columns: 1fr; }
@@ -147,6 +166,22 @@
   }
 
   .hidden { display: none !important; }
+
+  /* --- Multi-channel Grid --- */
+  .channel-grid {
+    display: grid; gap: 4px; margin-top: 8px;
+  }
+  .channel-grid.cols-1 { grid-template-columns: 1fr; }
+  .channel-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .channel-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  .channel-card {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: 4px 6px; overflow: hidden;
+  }
+  .channel-label {
+    font-size: 9px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px;
+  }
 
   /* --- Analyze Bar --- */
   .analyze-bar {
@@ -262,7 +297,6 @@
   .step-detail.open { max-height: 2000px; }
   .step-detail-inner { padding: 4px 0 10px 0; }
 
-  /* Code block inside detail */
   .detail-code {
     background: var(--code-bg); border: 1px solid var(--border);
     border-radius: 4px; margin-bottom: 4px; overflow: hidden;
@@ -284,7 +318,6 @@
   .detail-code pre .cmt { color: #6b7a8d; font-style: italic; }
   .detail-code pre .num { color: #79c0ff; }
 
-  /* Output block */
   .detail-output {
     border-radius: 4px; overflow: hidden;
     border: 1px solid rgba(80,200,200,0.15);
@@ -302,7 +335,6 @@
     max-height: 200px; margin: 0;
   }
 
-  /* Error block */
   .detail-error {
     border-radius: 4px; padding: 6px 10px;
     border: 1px solid rgba(232,84,84,0.2);
@@ -311,7 +343,6 @@
     color: #ff9b9b; line-height: 1.4;
   }
 
-  /* Decision block */
   .detail-decision {
     border: 1px solid rgba(230,152,58,0.2); border-radius: 4px;
     padding: 10px 14px; background: rgba(230,152,58,0.04);
@@ -325,7 +356,6 @@
     margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(230,152,58,0.12);
   }
 
-  /* Observation block */
   .detail-observation {
     font-size: 12px; color: var(--text); line-height: 1.5;
     padding: 8px 12px; background: var(--surface2);
@@ -340,7 +370,7 @@
   <span class="topbar-brand">AlwaysOnPT</span>
   <div class="topbar-sep"></div>
   <div class="topbar-meta" id="topbarMeta">
-    <span>Clinical EMG Analysis</span>
+    <span>Clinical Biosignal Analysis</span>
   </div>
   <div class="topbar-status" id="topbarStatus">
     <div class="topbar-dot" id="statusDot"></div>
@@ -348,69 +378,150 @@
   </div>
 </div>
 
+<!-- Source Tabs -->
+<div class="source-tabs" id="sourceTabs"></div>
+
 <!-- Split Layout -->
 <div class="split">
 
   <!-- Left Panel: Signal -->
   <div class="panel-left">
 
-    <!-- Session Controls -->
-    <div class="section">
-      <div class="section-label">Session</div>
-      <div class="controls">
-        <div class="field">
-          <label>Subject</label>
-          <select id="subject"></select>
+    <!-- ===== KNEE EMG SOURCE ===== -->
+    <div id="src-knee_emg">
+      <div class="section">
+        <div class="section-label">Session</div>
+        <div class="controls">
+          <div class="field">
+            <label>Subject</label>
+            <select id="subject"></select>
+          </div>
+          <div class="field">
+            <label>Exercise</label>
+            <select id="exercise"></select>
+          </div>
+          <div class="field">
+            <label>Task</label>
+            <select id="taskType">
+              <option value="emg_classification">EMG Classification</option>
+              <option value="open_analysis">Open Analysis</option>
+            </select>
+          </div>
+          <button id="loadBtn" onclick="startSession()">Load</button>
+          <button class="secondary" id="randomBtn" onclick="randomSession()">Random</button>
         </div>
-        <div class="field">
-          <label>Exercise</label>
-          <select id="exercise"></select>
+      </div>
+
+      <div class="section hidden" id="waveform-section">
+        <div class="section-label" id="waveformTitle">Signal</div>
+        <div class="canvas-wrap">
+          <canvas id="emgCanvas" height="120"></canvas>
         </div>
-        <div class="field">
-          <label>Task</label>
-          <select id="taskType">
-            <option value="emg_classification">EMG Classification</option>
-            <option value="open_analysis">Open Analysis</option>
-          </select>
+        <div class="canvas-wrap" style="margin-top: 4px;">
+          <canvas id="gonioCanvas" height="60"></canvas>
         </div>
-        <button id="loadBtn" onclick="startSession()">Load</button>
-        <button class="secondary" id="randomBtn" onclick="randomSession()">Random</button>
+        <div class="recording-bar" id="recordingBar">
+          <span class="rec-timer" id="recTimer">0.0s</span>
+          <span class="rec-label" id="recLabel"></span>
+          <span class="rec-detail" id="recDetail"></span>
+        </div>
+        <div id="segBar" class="segment-bar hidden"></div>
+        <div class="seg-legend hidden" id="segLegend"></div>
+        <div class="waveform-meta hidden" id="wfMetaWrap">
+          <span id="wfMeta"></span>
+          <span id="wfSel"></span>
+        </div>
+      </div>
+
+      <div class="hidden" id="analyze-section">
+        <div class="analyze-bar">
+          <button id="analyzeBtn" onclick="runAnalysis()">Analyze Segment</button>
+          <button class="secondary" id="analyzeAllBtn" onclick="runAnalysis(true)">Full Recording</button>
+          <div class="spinner hidden" id="spinner"></div>
+          <span class="status-text" id="statusText"></span>
+        </div>
       </div>
     </div>
 
-    <!-- Waveform -->
-    <div class="section hidden" id="waveform-section">
-      <div class="section-label" id="waveformTitle">Signal</div>
-      <div class="canvas-wrap">
-        <canvas id="emgCanvas" height="120"></canvas>
+    <!-- ===== LIVE SENSOR SOURCE ===== -->
+    <div id="src-live_sensor" class="hidden">
+      <div class="section">
+        <div class="section-label">Live Sensor Recording</div>
+        <div class="controls">
+          <div class="field">
+            <label>Recording</label>
+            <select id="liveRecSelect"></select>
+          </div>
+          <div class="field">
+            <label>Task</label>
+            <select id="liveTaskType">
+              <option value="emg_classification">EMG Classification</option>
+              <option value="open_analysis">Open Analysis</option>
+            </select>
+          </div>
+          <button id="liveLoadBtn" onclick="loadLiveRecording()">Load</button>
+        </div>
       </div>
-      <div class="canvas-wrap" style="margin-top: 4px;">
-        <canvas id="gonioCanvas" height="60"></canvas>
+
+      <div class="section hidden" id="live-waveform-section">
+        <div class="section-label" id="liveWaveformTitle">Sensor Data</div>
+        <div id="liveChannelGrid" class="channel-grid cols-2"></div>
+        <div class="recording-bar">
+          <span class="rec-timer" id="liveRecTimer">0.0s</span>
+          <span class="rec-label" id="liveRecLabel"></span>
+          <span class="rec-detail" id="liveRecDetail"></span>
+        </div>
       </div>
-      <div class="recording-bar" id="recordingBar">
-        <span class="rec-timer" id="recTimer">0.0s</span>
-        <span class="rec-label" id="recLabel"></span>
-        <span class="rec-detail" id="recDetail"></span>
-      </div>
-      <div id="segBar" class="segment-bar hidden"></div>
-      <div class="seg-legend hidden" id="segLegend"></div>
-      <div class="waveform-meta hidden" id="wfMetaWrap">
-        <span id="wfMeta"></span>
-        <span id="wfSel"></span>
+
+      <div class="hidden" id="live-analyze-section">
+        <div class="analyze-bar">
+          <button id="liveAnalyzeBtn" onclick="runLiveAnalysis()">Analyze Recording</button>
+          <div class="spinner hidden" id="liveSpinner"></div>
+          <span class="status-text" id="liveStatusText"></span>
+        </div>
       </div>
     </div>
 
-    <!-- Analyze -->
-    <div class="hidden" id="analyze-section">
-      <div class="analyze-bar">
-        <button id="analyzeBtn" onclick="runAnalysis()">Analyze Segment</button>
-        <button class="secondary" id="analyzeAllBtn" onclick="runAnalysis(true)">Full Recording</button>
-        <div class="spinner hidden" id="spinner"></div>
-        <span class="status-text" id="statusText"></span>
+    <!-- ===== MULTICHANNEL SOURCE ===== -->
+    <div id="src-multichannel" class="hidden">
+      <div class="section">
+        <div class="section-label">16-Channel EMG</div>
+        <div class="controls">
+          <div class="field">
+            <label>Recording</label>
+            <select id="multiRecSelect"></select>
+          </div>
+          <div class="field">
+            <label>Task</label>
+            <select id="multiTaskType">
+              <option value="emg_classification">EMG Classification</option>
+              <option value="open_analysis">Open Analysis</option>
+            </select>
+          </div>
+          <button id="multiLoadBtn" onclick="loadMultiRecording()">Load</button>
+        </div>
+      </div>
+
+      <div class="section hidden" id="multi-waveform-section">
+        <div class="section-label" id="multiWaveformTitle">16-Channel EMG Array</div>
+        <div id="multiChannelGrid" class="channel-grid cols-4"></div>
+        <div class="recording-bar">
+          <span class="rec-timer" id="multiRecTimer">0.0s</span>
+          <span class="rec-label" id="multiRecLabel"></span>
+          <span class="rec-detail" id="multiRecDetail"></span>
+        </div>
+      </div>
+
+      <div class="hidden" id="multi-analyze-section">
+        <div class="analyze-bar">
+          <button id="multiAnalyzeBtn" onclick="runMultiAnalysis()">Analyze Recording</button>
+          <div class="spinner hidden" id="multiSpinner"></div>
+          <span class="status-text" id="multiStatusText"></span>
+        </div>
       </div>
     </div>
 
-    <!-- Result -->
+    <!-- Result (shared) -->
     <div class="result-card hidden" id="result-card">
       <div class="section-label">Result</div>
       <div class="result-header">
@@ -442,26 +553,136 @@
 
 <script>
 const API = '';
+let activeSource = 'knee_emg';
+
+// --- Knee EMG state ---
 let subjectData = {};
 let recordingData = null;
 let selectedSegIdx = 0;
 let animFrameId = null;
 let analysisStartTime = 0;
 
+// --- Live sensor state ---
+let liveRecordings = [];
+let liveData = null;
+
+// --- Multichannel state ---
+let multiRecordings = [];
+let multiData = null;
+
+const CH_COLORS = [
+  '#50c8c8','#3b9eff','#8b7bd4','#e6983a','#2ecc71','#e85454','#f1c40f','#e67e22',
+  '#1abc9c','#9b59b6','#3498db','#e74c3c','#2ecc71','#f39c12','#16a085','#c0392b',
+];
+
+// =============================================================================
+// INIT
+// =============================================================================
+
 async function init() {
-  const res = await fetch(`${API}/api/subjects`);
-  const data = await res.json();
-  subjectData = data.subjects;
-  const subjectSel = document.getElementById('subject');
-  subjectSel.innerHTML = '';
-  for (const sid of Object.keys(subjectData).sort((a,b) => +a - +b)) {
-    const opt = document.createElement('option');
-    opt.value = sid; opt.textContent = `S${sid}`;
-    subjectSel.appendChild(opt);
-  }
-  updateExercises();
-  subjectSel.addEventListener('change', updateExercises);
+  const srcRes = await fetch(`${API}/api/sources`);
+  const srcData = await srcRes.json();
+  buildSourceTabs(srcData.sources);
+
+  // Load knee EMG subjects
+  try {
+    const res = await fetch(`${API}/api/subjects`);
+    const data = await res.json();
+    subjectData = data.subjects;
+    const subjectSel = document.getElementById('subject');
+    subjectSel.innerHTML = '';
+    for (const sid of Object.keys(subjectData).sort((a,b) => +a - +b)) {
+      const opt = document.createElement('option');
+      opt.value = sid; opt.textContent = `S${sid}`;
+      subjectSel.appendChild(opt);
+    }
+    updateExercises();
+    subjectSel.addEventListener('change', updateExercises);
+  } catch(e) {}
+
+  // Load live recordings
+  try {
+    const res = await fetch(`${API}/api/live/recordings`);
+    const data = await res.json();
+    liveRecordings = data.recordings;
+    const sel = document.getElementById('liveRecSelect');
+    sel.innerHTML = '';
+    for (const rec of liveRecordings) {
+      const opt = document.createElement('option');
+      opt.value = rec.id;
+      const info = [];
+      if (rec.has_emg) info.push(`EMG:${rec.n_emg_samples}`);
+      if (rec.has_imu) info.push(`IMU:${rec.n_imu_samples}`);
+      opt.textContent = `${rec.session} — ${rec.filename} (${info.join(', ')})`;
+      sel.appendChild(opt);
+    }
+  } catch(e) {}
+
+  // Load multichannel recordings
+  try {
+    const res = await fetch(`${API}/api/multichannel/recordings`);
+    const data = await res.json();
+    multiRecordings = data.recordings;
+    const sel = document.getElementById('multiRecSelect');
+    sel.innerHTML = '';
+    for (const rec of multiRecordings) {
+      const opt = document.createElement('option');
+      opt.value = rec.id;
+      opt.textContent = `${rec.scenario} (${rec.n_channels}ch, ${rec.duration}s)`;
+      sel.appendChild(opt);
+    }
+  } catch(e) {}
 }
+
+function buildSourceTabs(sources) {
+  const container = document.getElementById('sourceTabs');
+  container.innerHTML = '';
+
+  const srcMap = {};
+  for (const s of sources) srcMap[s.id] = s;
+
+  const allSources = [
+    { id: 'knee_emg', label: 'Knee EMG', fallback: '2ch · 1kHz' },
+    { id: 'live_sensor', label: 'Live Sensor', fallback: 'EMG + IMU' },
+    { id: 'multichannel', label: '16-Channel', fallback: '16ch EMG' },
+  ];
+
+  for (const s of allSources) {
+    const info = srcMap[s.id];
+    const tab = document.createElement('div');
+    tab.className = 'source-tab' + (s.id === activeSource ? ' active' : '');
+    tab.dataset.source = s.id;
+
+    let badge = '';
+    if (info) {
+      badge = `<span class="tab-badge">${info.n_files}</span>`;
+    } else {
+      badge = `<span class="tab-badge">0</span>`;
+    }
+    tab.innerHTML = `${s.label}${badge}`;
+    tab.onclick = () => switchSource(s.id);
+    container.appendChild(tab);
+  }
+}
+
+function switchSource(sourceId) {
+  activeSource = sourceId;
+
+  document.querySelectorAll('.source-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.source === sourceId);
+  });
+
+  document.getElementById('src-knee_emg').classList.toggle('hidden', sourceId !== 'knee_emg');
+  document.getElementById('src-live_sensor').classList.toggle('hidden', sourceId !== 'live_sensor');
+  document.getElementById('src-multichannel').classList.toggle('hidden', sourceId !== 'multichannel');
+
+  hide('result-card');
+  resetTrace();
+}
+
+// =============================================================================
+// KNEE EMG (existing flow)
+// =============================================================================
 
 function updateExercises() {
   const sid = document.getElementById('subject').value;
@@ -473,8 +694,6 @@ function updateExercises() {
     exSel.appendChild(opt);
   }
 }
-
-init();
 
 function randomSession() {
   const sids = Object.keys(subjectData);
@@ -495,9 +714,7 @@ async function startSession() {
 
   hide('result-card'); hide('analyze-section');
   hide('segBar'); hide('segLegend'); hide('wfMetaWrap');
-  document.getElementById('traceContainer').innerHTML =
-    '<div class="trace-empty" id="traceEmpty">Load a session and run analysis to see agent reasoning</div>';
-  document.getElementById('traceStats').textContent = '';
+  resetTrace();
   setTopbar('idle', `S${sid} · ${exercise}`);
 
   if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
@@ -528,15 +745,6 @@ async function startSession() {
   } finally {
     btn.disabled = false; btn.textContent = 'Load';
   }
-}
-
-function setTopbar(state, text) {
-  const dot = document.getElementById('statusDot');
-  const label = document.getElementById('statusLabel');
-  const meta = document.getElementById('topbarMeta');
-  dot.className = 'topbar-dot' + (state === 'running' ? ' running' : state === 'idle' ? ' active' : '');
-  label.textContent = state === 'running' ? 'Analyzing…' : 'Ready';
-  if (text) meta.innerHTML = `<span>${text}</span>`;
 }
 
 function animateStreaming(onDone) {
@@ -603,7 +811,7 @@ function drawSignalStatic(canvasId, data, h, color, label) {
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.stroke();
-  if (recordingData && recordingData.segments.length > 0) {
+  if (recordingData && recordingData.segments && recordingData.segments.length > 0) {
     const seg = recordingData.segments[selectedSegIdx];
     if (seg) {
       const total = recordingData.n_samples;
@@ -651,7 +859,144 @@ function updateSelLabel() {
     : 'No segment selected';
 }
 
-// --- Analysis (SSE) ---
+// =============================================================================
+// LIVE SENSOR
+// =============================================================================
+
+async function loadLiveRecording() {
+  const sel = document.getElementById('liveRecSelect');
+  if (!sel.value) return;
+  const btn = document.getElementById('liveLoadBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  hide('result-card'); resetTrace();
+
+  try {
+    const recId = sel.value;
+    const res = await fetch(`${API}/api/live/load/${recId}`);
+    liveData = await res.json();
+
+    show('live-waveform-section');
+    show('live-analyze-section');
+
+    const grid = document.getElementById('liveChannelGrid');
+    grid.innerHTML = '';
+
+    const channels = liveData.channels;
+    const nCh = channels.length;
+    grid.className = 'channel-grid ' + (nCh <= 2 ? 'cols-1' : 'cols-2');
+
+    const h = nCh <= 2 ? 80 : 55;
+    channels.forEach((ch, i) => {
+      const card = document.createElement('div');
+      card.className = 'channel-card';
+      card.innerHTML = `<div class="channel-label">${ch}</div><canvas id="live-ch-${i}" height="${h}"></canvas>`;
+      grid.appendChild(card);
+    });
+
+    requestAnimationFrame(() => {
+      channels.forEach((ch, i) => {
+        const sig = liveData.signals[ch];
+        drawMiniChannel(`live-ch-${i}`, sig, h, CH_COLORS[i % CH_COLORS.length], ch);
+      });
+    });
+
+    document.getElementById('liveRecTimer').textContent = liveData.duration_s.toFixed(1) + 's';
+    document.getElementById('liveRecLabel').textContent = `${nCh} channels · ${liveData.fs}Hz`;
+    document.getElementById('liveRecDetail').textContent = liveData.record_id;
+    document.getElementById('liveWaveformTitle').textContent = `Sensor Data — ${liveData.duration_s}s`;
+    setTopbar('idle', `Live · ${liveData.record_id}`);
+  } catch(err) {
+    alert('Failed: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load';
+  }
+}
+
+// =============================================================================
+// MULTICHANNEL
+// =============================================================================
+
+async function loadMultiRecording() {
+  const sel = document.getElementById('multiRecSelect');
+  if (!sel.value) return;
+  const btn = document.getElementById('multiLoadBtn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  hide('result-card'); resetTrace();
+
+  try {
+    const res = await fetch(`${API}/api/multichannel/load/${sel.value}`);
+    multiData = await res.json();
+
+    show('multi-waveform-section');
+    show('multi-analyze-section');
+
+    const grid = document.getElementById('multiChannelGrid');
+    grid.innerHTML = '';
+
+    const channels = multiData.channels;
+    const nCh = channels.length;
+    grid.className = 'channel-grid ' + (nCh <= 4 ? 'cols-2' : 'cols-4');
+
+    const h = nCh <= 4 ? 60 : 40;
+    channels.forEach((ch, i) => {
+      const card = document.createElement('div');
+      card.className = 'channel-card';
+      const shortName = ch.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      card.innerHTML = `<div class="channel-label">${shortName}</div><canvas id="multi-ch-${i}" height="${h}"></canvas>`;
+      grid.appendChild(card);
+    });
+
+    requestAnimationFrame(() => {
+      channels.forEach((ch, i) => {
+        const sig = multiData.signals[ch];
+        drawMiniChannel(`multi-ch-${i}`, sig, h, CH_COLORS[i % CH_COLORS.length], '');
+      });
+    });
+
+    document.getElementById('multiRecTimer').textContent = multiData.duration_s.toFixed(1) + 's';
+    document.getElementById('multiRecLabel').textContent = `${nCh} channels · ${multiData.fs}Hz`;
+    document.getElementById('multiRecDetail').textContent = multiData.scenario;
+    document.getElementById('multiWaveformTitle').textContent = `${nCh}-Channel EMG — ${multiData.scenario}`;
+    setTopbar('idle', `Multichannel · ${multiData.scenario}`);
+  } catch(err) {
+    alert('Failed: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Load';
+  }
+}
+
+// =============================================================================
+// SHARED: mini-channel drawing
+// =============================================================================
+
+function drawMiniChannel(canvasId, data, h, color, label) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr; canvas.height = h * dpr;
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  const W = rect.width;
+
+  ctx.strokeStyle = '#1a2030'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, h/2); ctx.lineTo(W, h/2); ctx.stroke();
+
+  if (!data || data.length < 2) return;
+  const absMax = Math.max(...data.map(Math.abs)) || 1;
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1;
+  for (let i = 0; i < data.length; i++) {
+    const x = (i / data.length) * W;
+    const y = h / 2 - (data[i] / absMax) * (h / 2 - 2);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+// =============================================================================
+// ANALYSIS (SSE) — shared
+// =============================================================================
+
 async function runAnalysis(fullRecording = false) {
   const analyzeBtn = document.getElementById('analyzeBtn');
   const spinner = document.getElementById('spinner');
@@ -660,10 +1005,9 @@ async function runAnalysis(fullRecording = false) {
   document.getElementById('analyzeAllBtn').disabled = true;
   spinner.classList.remove('hidden');
   hide('result-card');
+  resetTrace();
 
   const container = document.getElementById('traceContainer');
-  container.innerHTML = '';
-  document.getElementById('traceStats').textContent = '';
   let stepCount = 0;
   analysisStartTime = Date.now();
   setTopbar('running');
@@ -690,48 +1034,8 @@ async function runAnalysis(fullRecording = false) {
       groundTruth = segData.motion_class;
     }
 
-    status.textContent = 'Agent running…';
-    const res = await fetch(`${API}/api/analyze/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task_type: taskType, domain: 'emg', fs: 1000, signals, record_id: recordId, metadata }),
-    });
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        let parsed;
-        try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
-        if (parsed.event === 'step') {
-          stepCount++;
-          const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(0);
-          status.textContent = `Step ${stepCount}`;
-          document.getElementById('traceStats').textContent = `${stepCount} steps · ${elapsed}s`;
-          appendStep(container, parsed.step, stepCount);
-        } else if (parsed.event === 'done') {
-          spinner.classList.add('hidden');
-          const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(1);
-          status.textContent = `Done · ${elapsed}s`;
-          document.getElementById('traceStats').textContent = `${parsed.result.n_steps} steps · ${elapsed}s`;
-          setTopbar('idle');
-          showResult(parsed.result, groundTruth);
-        } else if (parsed.event === 'error') {
-          spinner.classList.add('hidden');
-          status.textContent = 'Error: ' + parsed.message;
-          setTopbar('idle');
-        }
-      }
-    }
+    await streamAnalysis({ task_type: taskType, domain: 'emg', fs: 1000, signals, record_id: recordId, metadata },
+      groundTruth, container, spinner, status, stepCount);
   } catch (err) {
     spinner.classList.add('hidden');
     status.textContent = 'Error: ' + err.message;
@@ -740,6 +1044,136 @@ async function runAnalysis(fullRecording = false) {
     analyzeBtn.disabled = false;
     document.getElementById('analyzeAllBtn').disabled = false;
   }
+}
+
+async function runLiveAnalysis() {
+  if (!liveData) return;
+  const spinner = document.getElementById('liveSpinner');
+  const status = document.getElementById('liveStatusText');
+  const btn = document.getElementById('liveAnalyzeBtn');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  hide('result-card');
+  resetTrace();
+
+  const container = document.getElementById('traceContainer');
+  analysisStartTime = Date.now();
+  setTopbar('running');
+
+  const taskType = document.getElementById('liveTaskType').value;
+  const signals = {};
+  if (liveData.signals.emg) signals.emg = liveData.signals.emg;
+
+  try {
+    await streamAnalysis({
+      task_type: taskType, domain: 'emg', fs: liveData.fs,
+      signals, record_id: liveData.record_id,
+      metadata: liveData.metadata,
+    }, null, container, spinner, status, 0);
+  } catch(err) {
+    spinner.classList.add('hidden');
+    status.textContent = 'Error: ' + err.message;
+    setTopbar('idle');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runMultiAnalysis() {
+  if (!multiData) return;
+  const spinner = document.getElementById('multiSpinner');
+  const status = document.getElementById('multiStatusText');
+  const btn = document.getElementById('multiAnalyzeBtn');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  hide('result-card');
+  resetTrace();
+
+  const container = document.getElementById('traceContainer');
+  analysisStartTime = Date.now();
+  setTopbar('running');
+
+  const taskType = document.getElementById('multiTaskType').value;
+
+  try {
+    await streamAnalysis({
+      task_type: taskType, domain: 'emg', fs: multiData.fs,
+      signals: multiData.signals_full || multiData.signals,
+      record_id: multiData.record_id,
+      metadata: multiData.metadata,
+    }, null, container, spinner, status, 0);
+  } catch(err) {
+    spinner.classList.add('hidden');
+    status.textContent = 'Error: ' + err.message;
+    setTopbar('idle');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function streamAnalysis(body, groundTruth, container, spinner, status, stepCount) {
+  status.textContent = 'Agent running…';
+
+  const res = await fetch(`${API}/api/analyze/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      let parsed;
+      try { parsed = JSON.parse(line.slice(6)); } catch { continue; }
+      if (parsed.event === 'step') {
+        stepCount++;
+        const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(0);
+        status.textContent = `Step ${stepCount}`;
+        document.getElementById('traceStats').textContent = `${stepCount} steps · ${elapsed}s`;
+        appendStep(container, parsed.step, stepCount);
+      } else if (parsed.event === 'done') {
+        spinner.classList.add('hidden');
+        const elapsed = ((Date.now() - analysisStartTime) / 1000).toFixed(1);
+        status.textContent = `Done · ${elapsed}s`;
+        document.getElementById('traceStats').textContent = `${parsed.result.n_steps} steps · ${elapsed}s`;
+        setTopbar('idle');
+        showResult(parsed.result, groundTruth);
+      } else if (parsed.event === 'error') {
+        spinner.classList.add('hidden');
+        status.textContent = 'Error: ' + parsed.message;
+        setTopbar('idle');
+      }
+    }
+  }
+}
+
+// =============================================================================
+// TRACE + RESULT RENDERING (shared)
+// =============================================================================
+
+function resetTrace() {
+  const container = document.getElementById('traceContainer');
+  container.innerHTML = '<div class="trace-empty" id="traceEmpty">Load a session and run analysis to see agent reasoning</div>';
+  document.getElementById('traceStats').textContent = '';
+}
+
+function setTopbar(state, text) {
+  const dot = document.getElementById('statusDot');
+  const label = document.getElementById('statusLabel');
+  const meta = document.getElementById('topbarMeta');
+  dot.className = 'topbar-dot' + (state === 'running' ? ' running' : state === 'idle' ? ' active' : '');
+  label.textContent = state === 'running' ? 'Analyzing…' : 'Ready';
+  if (text) meta.innerHTML = `<span>${text}</span>`;
 }
 
 function appendStep(container, step, idx) {
@@ -887,17 +1321,21 @@ function showResult(data, groundTruth) {
   document.getElementById('resultNarrative').textContent = data.clinical_narrative || 'No narrative.';
 
   const box = document.getElementById('verdictBox');
-  const predicted = (data.classification || '').toLowerCase().trim();
-  const truth = (groundTruth || '').toLowerCase().trim();
-  const gaitPhases = ['stance', 'swing'];
-  const match = predicted === truth || predicted.includes(truth) || truth.includes(predicted)
-    || (truth === 'gait' && gaitPhases.includes(predicted));
-  const label = (truth === 'gait' && gaitPhases.includes(predicted))
-    ? `CORRECT (gait phase: ${predicted})`
-    : match ? 'CORRECT' : 'MISMATCH';
-  box.innerHTML = `<div class="verdict ${match ? 'correct' : 'incorrect'}">
-    ${label} — truth: <strong>${groundTruth}</strong>, predicted: <strong>${data.classification || '—'}</strong>
-  </div>`;
+  if (groundTruth) {
+    const predicted = (data.classification || '').toLowerCase().trim();
+    const truth = (groundTruth || '').toLowerCase().trim();
+    const gaitPhases = ['stance', 'swing'];
+    const match = predicted === truth || predicted.includes(truth) || truth.includes(predicted)
+      || (truth === 'gait' && gaitPhases.includes(predicted));
+    const label = (truth === 'gait' && gaitPhases.includes(predicted))
+      ? `CORRECT (gait phase: ${predicted})`
+      : match ? 'CORRECT' : 'MISMATCH';
+    box.innerHTML = `<div class="verdict ${match ? 'correct' : 'incorrect'}">
+      ${label} — truth: <strong>${groundTruth}</strong>, predicted: <strong>${data.classification || '—'}</strong>
+    </div>`;
+  } else {
+    box.innerHTML = '';
+  }
 
   const plotsEl = document.getElementById('plotsSection'); plotsEl.innerHTML = '';
   if (data.plot_urls && data.plot_urls.length) {
@@ -912,6 +1350,8 @@ function showResult(data, groundTruth) {
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+init();
 </script>
 </body>
 </html>

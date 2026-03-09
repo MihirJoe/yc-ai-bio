@@ -78,9 +78,16 @@ alwaysonpt/
 ├── static/index.html      # Single-page demo UI (dark theme, signal viz, trace viewer)
 └── requirements.txt       # Python dependencies
 
+live_sensor_demo/
+├── download_data.sh       # Download/generate all demo data
+└── README.md              # Data setup instructions
+
 ios/AlwaysOnPT/            # iOS companion app (Swift, BLE/IMU sensor streaming)
-scripts/                   # Dataset download scripts
-data/                      # EMG + PhysioNet datasets (gitignored)
+scripts/                   # PhysioNet dataset download scripts
+data/                      # All signal data (gitignored)
+├── knee_emg/              #   2-channel EMG dataset (Zhang 2017)
+├── live_data_sample/      #   iOS sensor recordings (EMG + IMU)
+└── multichannel_emg/      #   16-channel EMG array
 ```
 
 ---
@@ -111,18 +118,23 @@ LANGSMITH_API_KEY=lsv2_...        # optional
 LANGSMITH_PROJECT=alwaysonpt      # optional
 ```
 
-### 3. Get data
+### 3. Get demo data
 
-The primary dataset is Zhang et al. 2017 knee EMG (14 subjects, 3 exercises: standing, sitting, gait). Place it at:
+The demo supports three data sources. Use the download script to check/generate what you need:
 
+```bash
+# Check what data is already present
+./live_sensor_demo/download_data.sh --check
+
+# Generate synthetic 16-channel data + verify other sources
+./live_sensor_demo/download_data.sh --all
 ```
-data/knee_emg/S1File/Data/
-├── 1standing.txt
-├── 1sitting.txt
-├── 1gait.txt
-├── 2standing.txt
-...
-```
+
+| Source | Description | Setup |
+|--------|-------------|-------|
+| **Knee EMG** | Zhang 2017, 14 subjects, 2ch (EMG + goniometer), 1kHz | Place in `data/knee_emg/S1File/Data/` |
+| **Live Sensor** | iOS app recordings, EMG + IMU (pitch/roll/yaw) | Place in `data/live_data_sample/` |
+| **16-Channel EMG** | 16-muscle EMG array | Auto-generated synthetic data, or place real data in `data/multichannel_emg/` |
 
 For out-of-distribution evaluation, download PhysioNet datasets:
 
@@ -136,7 +148,7 @@ For out-of-distribution evaluation, download PhysioNet datasets:
 python -m alwaysonpt.server
 ```
 
-Open **http://localhost:8000** — select a subject and exercise, pick a segment, and hit **Run Analysis**. The agent's reasoning steps stream in real-time.
+Open **http://localhost:8000** — use the source tabs to switch between Knee EMG, Live Sensor, and 16-Channel EMG. Select a recording, visualize the signals, and hit **Analyze** to watch the agent reason in real-time.
 
 ---
 
@@ -160,9 +172,14 @@ All endpoints are served by FastAPI at `http://localhost:8000`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | Demo UI |
-| `GET` | `/api/subjects` | List available subjects and exercises |
+| `GET` | `/api/sources` | List available data sources with channel info |
+| `GET` | `/api/subjects` | List available knee EMG subjects and exercises |
 | `GET` | `/api/load/{subject_id}/{exercise}` | Load recording, return segments + downsampled signals |
 | `GET` | `/api/load/{subject_id}/{exercise}/segment/{idx}` | Load a single segment's raw data |
+| `GET` | `/api/live/recordings` | List live sensor recordings |
+| `GET` | `/api/live/load/{recording}` | Load a live sensor recording |
+| `GET` | `/api/multichannel/recordings` | List 16-channel EMG recordings |
+| `GET` | `/api/multichannel/load/{recording_id}` | Load a multichannel recording |
 | `POST` | `/api/analyze/stream` | Run agent analysis with SSE streaming |
 | `POST` | `/api/analyze` | Run agent analysis (blocking, returns full result) |
 | `GET` | `/api/task-types` | List available task types |
