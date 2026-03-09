@@ -11,8 +11,8 @@ venv/
 # macOS
 .DS_Store
 
-# Data (large files)
-data/
+# # Data (large files)
+# data/
 
 # Downloaded model checkpoints (run scripts/download_models.sh)
 models/
